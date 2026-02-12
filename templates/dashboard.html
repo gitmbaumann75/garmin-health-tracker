@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garmin Health Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏃 Garmin Health Tracker</h1>
+            <p class="subtitle">Your personal health dashboard</p>
+            <div style="margin-top: 15px;">
+                <a href="/api/export-csv" download style="
+                    display: inline-block;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 12px 24px;
+                    text-decoration: none;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+                    transition: transform 0.2s;
+                " onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+                    📥 Export All Data (CSV)
+                </a>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Today's Steps</h3>
+                <p class="stat-value" id="today-steps">--</p>
+            </div>
+            <div class="stat-card">
+                <h3>Resting HR</h3>
+                <p class="stat-value" id="today-hr">--</p>
+            </div>
+            <div class="stat-card">
+                <h3>Sleep Score</h3>
+                <p class="stat-value" id="today-sleep">--</p>
+            </div>
+            <div class="stat-card">
+                <h3>Body Battery</h3>
+                <p class="stat-value" id="today-battery">--</p>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <h2>30-Day Trends</h2>
+            <div class="chart-container">
+                <canvas id="stepsChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="heartRateChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="sleepChart"></canvas>
+            </div>
+        </div>
+
+        <div class="activities-section">
+            <h2>Recent Activities</h2>
+            <div id="activities-list">
+                <p>Loading activities...</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>Last updated: <span id="last-update">--</span></p>
+        </footer>
+    </div>
+
+    <script>
+        // Fetch and display daily stats
+        async function loadDailyStats() {
+            try {
+                const response = await fetch('/api/daily-stats');
+                const data = await response.json();
+                
+                if (data.length > 0) {
+                    const today = data[0];
+                    document.getElementById('today-steps').textContent = today.steps?.toLocaleString() || '--';
+                    document.getElementById('today-hr').textContent = today.resting_hr ? `${today.resting_hr} bpm` : '--';
+                    document.getElementById('today-sleep').textContent = today.sleep_score || '--';
+                    document.getElementById('today-battery').textContent = today.body_battery || '--';
+                }
+                
+                // Create charts
+                createCharts(data);
+                
+                document.getElementById('last-update').textContent = new Date().toLocaleString();
+            } catch (error) {
+                console.error('Error loading daily stats:', error);
+            }
+        }
+
+        // Create charts
+        function createCharts(data) {
+            const dates = data.map(d => d.date).reverse();
+            const steps = data.map(d => d.steps).reverse();
+            const restingHR = data.map(d => d.resting_hr).reverse();
+            const sleepHours = data.map(d => d.sleep_hours).reverse();
+
+            // Steps chart
+            new Chart(document.getElementById('stepsChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Daily Steps',
+                        data: steps,
+                        borderColor: '#4CAF50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Daily Steps'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Heart Rate chart
+            new Chart(document.getElementById('heartRateChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Resting Heart Rate',
+                        data: restingHR,
+                        borderColor: '#F44336',
+                        backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Resting Heart Rate'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
+                    }
+                }
+            });
+
+            // Sleep chart
+            new Chart(document.getElementById('sleepChart'), {
+                type: 'bar',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Sleep Hours',
+                        data: sleepHours,
+                        backgroundColor: '#2196F3'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Sleep Duration'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 12
+                        }
+                    }
+                }
+            });
+        }
+
+        // Fetch and display recent activities
+        async function loadActivities() {
+            try {
+                const response = await fetch('/api/recent-activities');
+                const activities = await response.json();
+                
+                const activitiesList = document.getElementById('activities-list');
+                
+                if (activities.length === 0) {
+                    activitiesList.innerHTML = '<p>No activities found</p>';
+                    return;
+                }
+                
+                let html = '<div class="activities-grid">';
+                activities.forEach(activity => {
+                    html += `
+                        <div class="activity-card">
+                            <h3>${activity.type}</h3>
+                            <p><strong>Date:</strong> ${new Date(activity.start_time).toLocaleDateString()}</p>
+                            <p><strong>Duration:</strong> ${activity.duration_minutes} min</p>
+                            <p><strong>Distance:</strong> ${activity.distance_km} km</p>
+                            <p><strong>Avg HR:</strong> ${activity.avg_hr || '--'} bpm</p>
+                            <p><strong>Calories:</strong> ${activity.calories || '--'}</p>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                
+                activitiesList.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading activities:', error);
+                document.getElementById('activities-list').innerHTML = '<p>Error loading activities</p>';
+            }
+        }
+
+        // Load data when page loads
+        window.addEventListener('load', () => {
+            loadDailyStats();
+            loadActivities();
+        });
+
+        // Refresh data every 5 minutes
+        setInterval(() => {
+            loadDailyStats();
+            loadActivities();
+        }, 300000);
+    </script>
+</body>
+</html>

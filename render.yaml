@@ -1,0 +1,36 @@
+services:
+  # Web service - your dashboard
+  - type: web
+    name: garmin-health-tracker
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GARMIN_EMAIL
+        sync: false
+      - key: GARMIN_PASSWORD
+        sync: false
+      - key: DAYS_TO_FETCH
+        value: 90
+
+  # Cron job - automatic daily data sync
+  - type: cron
+    name: daily-garmin-sync
+    env: python
+    region: oregon
+    schedule: "0 7 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python fetch_garmin_data.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GARMIN_EMAIL
+        sync: false
+      - key: GARMIN_PASSWORD
+        sync: false
+      - key: DAYS_TO_FETCH
+        value: 1
