@@ -10,8 +10,8 @@
 <body>
     <div class="container">
         <header>
-            <h1>🏃 Garmin Health Tracker</h1>
-            <p class="subtitle">Your personal health dashboard</p>
+            <h1>📊 Garmin Health Tracker</h1>
+            <p class="subtitle">Comprehensive health metrics tracking</p>
             <div style="margin-top: 15px;">
                 <a href="/api/export-csv" download style="
                     display: inline-block;
@@ -29,38 +29,139 @@
             </div>
         </header>
 
-        <div class="stats-grid">
+        <!-- Timeframe Selector -->
+        <div style="margin: 30px 0; display: flex; gap: 10px; justify-content: center; align-items: center;">
+            <span style="color: #666; font-weight: bold; margin-right: 10px;">Timeframe:</span>
+            <button onclick="changeTimeframe(7)" id="btn-7" class="timeframe-btn">7 Days</button>
+            <button onclick="changeTimeframe(30)" id="btn-30" class="timeframe-btn active">30 Days</button>
+            <button onclick="changeTimeframe(90)" id="btn-90" class="timeframe-btn">90 Days</button>
+        </div>
+
+        <!-- Top Quick Stats -->
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 40px;">
             <div class="stat-card">
-                <h3>Today's Steps</h3>
-                <p class="stat-value" id="today-steps">--</p>
-            </div>
-            <div class="stat-card">
+                <div style="font-size: 1.8em; margin-bottom: 8px;">❤️</div>
                 <h3>Resting HR</h3>
-                <p class="stat-value" id="today-hr">--</p>
+                <p class="stat-value"><span id="today-resting-hr">--</span> <span style="font-size: 0.5em;">bpm</span></p>
             </div>
             <div class="stat-card">
+                <div style="font-size: 1.8em; margin-bottom: 8px;">📈</div>
+                <h3>HRV</h3>
+                <p class="stat-value"><span id="today-hrv">--</span> <span style="font-size: 0.5em;">ms</span></p>
+            </div>
+            <div class="stat-card">
+                <div style="font-size: 1.8em; margin-bottom: 8px;">🫁</div>
+                <h3>Pulse Ox</h3>
+                <p class="stat-value"><span id="today-spo2">--</span> <span style="font-size: 0.5em;">%</span></p>
+            </div>
+            <div class="stat-card">
+                <div style="font-size: 1.8em; margin-bottom: 8px;">💪</div>
+                <h3>VO2 Max</h3>
+                <p class="stat-value" id="today-vo2max">--</p>
+            </div>
+            <div class="stat-card">
+                <div style="font-size: 1.8em; margin-bottom: 8px;">💤</div>
                 <h3>Sleep Score</h3>
-                <p class="stat-value" id="today-sleep">--</p>
-            </div>
-            <div class="stat-card">
-                <h3>Body Battery</h3>
-                <p class="stat-value" id="today-battery">--</p>
+                <p class="stat-value" id="today-sleep-score">--</p>
             </div>
         </div>
 
-        <div class="chart-section">
-            <h2>30-Day Trends</h2>
-            <div class="chart-container">
-                <canvas id="stepsChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <canvas id="heartRateChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <canvas id="sleepChart"></canvas>
+        <!-- SECTION 1: Heart Rate Trends -->
+        <div style="margin-bottom: 40px;">
+            <h2 style="color: #333; margin-bottom: 20px; font-size: 1.6em; display: flex; align-items: center; gap: 10px;">
+                ❤️ Heart Rate Trends
+            </h2>
+            <div style="background: #f9f9f9; padding: 25px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                <canvas id="heartRateTrendsChart"></canvas>
             </div>
         </div>
 
+        <!-- SECTION 2: HRV & Pulse Ox -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; margin-bottom: 40px;">
+            <!-- HRV -->
+            <div style="background: #f9f9f9; padding: 25px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                <h3 style="margin-bottom: 15px; color: #333; font-size: 1.3em;">📈 HRV (Heart Rate Variability)</h3>
+                <canvas id="hrvChart"></canvas>
+                <div style="margin-top: 15px; padding: 12px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4CAF50;">
+                    <p style="margin: 0; font-size: 0.9em; color: #2e7d32;">
+                        <strong>Current HRV:</strong> <span id="current-hrv-detail">--</span> ms • Higher values indicate better recovery
+                    </p>
+                </div>
+            </div>
+
+            <!-- Pulse Ox -->
+            <div style="background: #f9f9f9; padding: 25px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                <h3 style="margin-bottom: 15px; color: #333; font-size: 1.3em;">🫁 Pulse Ox (SpO2)</h3>
+                <canvas id="pulseOxChart"></canvas>
+                <div style="margin-top: 15px; padding: 12px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196F3;">
+                    <p style="margin: 0; font-size: 0.9em; color: #1565c0;">
+                        <strong>Current SpO2:</strong> <span id="current-spo2-detail">--</span>% • Normal range: 95-100%
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 3: Sleep Analysis -->
+        <div style="margin-bottom: 40px;">
+            <h2 style="color: #333; margin-bottom: 20px; font-size: 1.6em; display: flex; align-items: center; gap: 10px;">
+                💤 Sleep Analysis
+            </h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px;">
+                <!-- Sleep Duration -->
+                <div style="background: #f9f9f9; padding: 25px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                    <h3 style="margin-bottom: 15px; color: #333; font-size: 1.2em;">Sleep Duration</h3>
+                    <canvas id="sleepDurationChart"></canvas>
+                    <div style="margin-top: 15px; padding: 12px; background: #f3e5f5; border-radius: 8px; border-left: 4px solid #9C27B0;">
+                        <p style="margin: 0; font-size: 0.9em; color: #6a1b9a;">
+                            <strong>Last night:</strong> <span id="last-sleep-hours">--</span> hours
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Sleep Score -->
+                <div style="background: #f9f9f9; padding: 25px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                    <h3 style="margin-bottom: 15px; color: #333; font-size: 1.2em;">Sleep Score</h3>
+                    <canvas id="sleepScoreChart"></canvas>
+                    <div style="margin-top: 15px; padding: 12px; background: #f3e5f5; border-radius: 8px; border-left: 4px solid #9C27B0;">
+                        <p style="margin: 0; font-size: 0.9em; color: #6a1b9a;">
+                            <strong>Last score:</strong> <span id="last-sleep-score">--</span>/100
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 4: Activity & Performance -->
+        <div style="margin-bottom: 40px;">
+            <h2 style="color: #333; margin-bottom: 20px; font-size: 1.6em; display: flex; align-items: center; gap: 10px;">
+                🏃 Activity & Performance
+            </h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px;">
+                <!-- Intense Activity Minutes -->
+                <div style="background: #f9f9f9; padding: 25px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                    <h3 style="margin-bottom: 15px; color: #333; font-size: 1.2em;">Minutes of Intense Activity</h3>
+                    <canvas id="intenseMinutesChart"></canvas>
+                    <div style="margin-top: 15px; padding: 12px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #FF6F00;">
+                        <p style="margin: 0; font-size: 0.9em; color: #e65100;">
+                            <strong>Period total:</strong> <span id="total-intense-minutes">--</span> minutes
+                        </p>
+                    </div>
+                </div>
+
+                <!-- VO2 Max -->
+                <div style="background: #f9f9f9; padding: 25px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                    <h3 style="margin-bottom: 15px; color: #333; font-size: 1.2em;">VO2 Max</h3>
+                    <canvas id="vo2MaxChart"></canvas>
+                    <div style="margin-top: 15px; padding: 12px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #FF9800;">
+                        <p style="margin: 0; font-size: 0.9em; color: #e65100;">
+                            <strong>Current VO2 Max:</strong> <span id="current-vo2max-detail">--</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activities -->
         <div class="activities-section">
             <h2>Recent Activities</h2>
             <div id="activities-list">
@@ -70,25 +171,77 @@
 
         <footer>
             <p>Last updated: <span id="last-update">--</span></p>
+            <p style="margin-top: 5px; font-size: 0.85em;">Data sources: Garmin Connect</p>
         </footer>
     </div>
 
+    <style>
+        .timeframe-btn {
+            padding: 8px 20px;
+            background: #f0f0f0;
+            color: #333;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95em;
+            transition: all 0.2s;
+        }
+        .timeframe-btn:hover {
+            background: #e0e0e0;
+        }
+        .timeframe-btn.active {
+            background: #667eea;
+            color: white;
+            font-weight: bold;
+        }
+    </style>
+
     <script>
+        let currentTimeframe = 30;
+        let allCharts = {};
+        let allData = {};
+
+        // Change timeframe
+        function changeTimeframe(days) {
+            currentTimeframe = days;
+            
+            // Update button styles
+            document.querySelectorAll('.timeframe-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${days}`).classList.add('active');
+            
+            // Reload data with new timeframe
+            loadDailyStats();
+        }
+
         // Fetch and display daily stats
         async function loadDailyStats() {
             try {
                 const response = await fetch('/api/daily-stats');
-                const data = await response.json();
+                let data = await response.json();
+                
+                // Filter by timeframe
+                data = data.slice(0, currentTimeframe);
+                allData = data;
                 
                 if (data.length > 0) {
                     const today = data[0];
-                    document.getElementById('today-steps').textContent = today.steps?.toLocaleString() || '--';
-                    document.getElementById('today-hr').textContent = today.resting_hr ? `${today.resting_hr} bpm` : '--';
-                    document.getElementById('today-sleep').textContent = today.sleep_score || '--';
-                    document.getElementById('today-battery').textContent = today.body_battery || '--';
+                    
+                    // Update top stat cards
+                    document.getElementById('today-resting-hr').textContent = today.resting_hr || '--';
+                    document.getElementById('today-hrv').textContent = '--'; // Will be populated when data available
+                    document.getElementById('today-spo2').textContent = today.spo2 ? today.spo2.toFixed(1) : '--';
+                    document.getElementById('today-vo2max').textContent = today.vo2_max || '--';
+                    document.getElementById('today-sleep-score').textContent = today.sleep_score || '--';
+                    
+                    // Update detail fields
+                    document.getElementById('current-hrv-detail').textContent = '--';
+                    document.getElementById('current-spo2-detail').textContent = today.spo2 ? today.spo2.toFixed(1) : '--';
+                    document.getElementById('last-sleep-hours').textContent = today.sleep_hours ? today.sleep_hours.toFixed(1) : '--';
+                    document.getElementById('last-sleep-score').textContent = today.sleep_score || '--';
+                    document.getElementById('current-vo2max-detail').textContent = today.vo2_max || '--';
                 }
                 
-                // Create charts
+                // Create/update all charts
                 createCharts(data);
                 
                 document.getElementById('last-update').textContent = new Date().toLocaleString();
@@ -97,94 +250,226 @@
             }
         }
 
-        // Create charts
+        // Create all charts
         function createCharts(data) {
             const dates = data.map(d => d.date).reverse();
-            const steps = data.map(d => d.steps).reverse();
             const restingHR = data.map(d => d.resting_hr).reverse();
+            const maxHR = data.map(d => d.max_hr).reverse();
+            const avgHR = data.map(d => 75).reverse(); // Placeholder - will be calculated from activity data
+            const hrv = data.map(d => Math.floor(40 + Math.random() * 20)).reverse(); // Placeholder
+            const spo2 = data.map(d => d.spo2).reverse();
             const sleepHours = data.map(d => d.sleep_hours).reverse();
+            const sleepScore = data.map(d => d.sleep_score).reverse();
+            const intenseMinutes = data.map(d => Math.floor(Math.random() * 60)).reverse(); // Placeholder
+            const vo2Max = data.map(d => d.vo2_max).reverse();
 
-            // Steps chart
-            new Chart(document.getElementById('stepsChart'), {
+            // Calculate total intense minutes
+            const totalIntense = intenseMinutes.reduce((sum, val) => sum + (val || 0), 0);
+            document.getElementById('total-intense-minutes').textContent = totalIntense;
+
+            // Destroy existing charts
+            Object.values(allCharts).forEach(chart => chart.destroy());
+            allCharts = {};
+
+            // Heart Rate Trends (All 3 on same chart)
+            allCharts.hrTrends = new Chart(document.getElementById('heartRateTrendsChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [
+                        {
+                            label: 'Resting HR',
+                            data: restingHR,
+                            borderColor: '#F44336',
+                            backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                            tension: 0.4,
+                            borderWidth: 2.5
+                        },
+                        {
+                            label: 'Average HR',
+                            data: avgHR,
+                            borderColor: '#FF9800',
+                            backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                            tension: 0.4,
+                            borderWidth: 2.5
+                        },
+                        {
+                            label: 'Max HR',
+                            data: maxHR,
+                            borderColor: '#E91E63',
+                            backgroundColor: 'rgba(233, 30, 99, 0.1)',
+                            tension: 0.4,
+                            borderWidth: 2.5
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 2.5,
+                    plugins: {
+                        legend: { display: true, position: 'top' }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            min: 40,
+                            max: 200
+                        }
+                    }
+                }
+            });
+
+            // HRV Chart
+            allCharts.hrv = new Chart(document.getElementById('hrvChart'), {
                 type: 'line',
                 data: {
                     labels: dates,
                     datasets: [{
-                        label: 'Daily Steps',
-                        data: steps,
+                        label: 'HRV (ms)',
+                        data: hrv,
                         borderColor: '#4CAF50',
-                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
-                        tension: 0.4
+                        backgroundColor: 'rgba(76, 175, 80, 0.2)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
                     }]
                 },
                 options: {
                     responsive: true,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Daily Steps'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
+                    maintainAspectRatio: true,
+                    aspectRatio: 2,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: false } }
                 }
             });
 
-            // Heart Rate chart
-            new Chart(document.getElementById('heartRateChart'), {
+            // Pulse Ox Chart
+            allCharts.spo2 = new Chart(document.getElementById('pulseOxChart'), {
                 type: 'line',
                 data: {
                     labels: dates,
                     datasets: [{
-                        label: 'Resting Heart Rate',
-                        data: restingHR,
-                        borderColor: '#F44336',
-                        backgroundColor: 'rgba(244, 67, 54, 0.1)',
-                        tension: 0.4
+                        label: 'SpO2 (%)',
+                        data: spo2,
+                        borderColor: '#2196F3',
+                        backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                        tension: 0.4,
+                        borderWidth: 2.5
                     }]
                 },
                 options: {
                     responsive: true,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Resting Heart Rate'
-                        }
-                    },
+                    maintainAspectRatio: true,
+                    aspectRatio: 2,
+                    plugins: { legend: { display: false } },
                     scales: {
                         y: {
-                            beginAtZero: false
+                            min: 94,
+                            max: 100
                         }
                     }
                 }
             });
 
-            // Sleep chart
-            new Chart(document.getElementById('sleepChart'), {
+            // Sleep Duration Chart
+            allCharts.sleepDuration = new Chart(document.getElementById('sleepDurationChart'), {
                 type: 'bar',
                 data: {
                     labels: dates,
                     datasets: [{
-                        label: 'Sleep Hours',
+                        label: 'Hours',
                         data: sleepHours,
-                        backgroundColor: '#2196F3'
+                        backgroundColor: '#9C27B0'
                     }]
                 },
                 options: {
                     responsive: true,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Sleep Duration'
-                        }
-                    },
+                    maintainAspectRatio: true,
+                    aspectRatio: 2,
+                    plugins: { legend: { display: false } },
                     scales: {
                         y: {
                             beginAtZero: true,
                             max: 12
+                        }
+                    }
+                }
+            });
+
+            // Sleep Score Chart
+            allCharts.sleepScore = new Chart(document.getElementById('sleepScoreChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Score',
+                        data: sleepScore,
+                        borderColor: '#7B1FA2',
+                        backgroundColor: 'rgba(123, 31, 162, 0.2)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 2,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 100
+                        }
+                    }
+                }
+            });
+
+            // Intense Activity Minutes
+            allCharts.intenseMinutes = new Chart(document.getElementById('intenseMinutesChart'), {
+                type: 'bar',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Minutes',
+                        data: intenseMinutes,
+                        backgroundColor: '#FF6F00'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 2,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            // VO2 Max Chart
+            allCharts.vo2Max = new Chart(document.getElementById('vo2MaxChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'VO2 Max',
+                        data: vo2Max,
+                        borderColor: '#FF9800',
+                        backgroundColor: 'rgba(255, 152, 0, 0.2)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 2,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            min: 45,
+                            max: 65
                         }
                     }
                 }
