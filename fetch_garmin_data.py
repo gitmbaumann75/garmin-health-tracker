@@ -1,6 +1,6 @@
 """
-Garmin Data Fetcher - CORRECT Token Authentication
-Uses GARMINTOKENS environment variable + client.login(tokenstore)
+Garmin Data Fetcher - ACTUALLY CORRECT Token Authentication
+Uses garth.resume() BEFORE creating Garmin client
 """
 
 from garminconnect import Garmin
@@ -11,6 +11,8 @@ import sys
 import json
 import base64
 import time
+import garth  # CRITICAL: Import garth directly
+from garth.exc import GarthException
 
 # Configuration
 TOKEN_ENV_VAR = 'GARMIN_TOKENS_BASE64'
@@ -66,33 +68,40 @@ def setup_token_directory():
         log(f"❌ ERROR: Failed to write token files: {e}")
         sys.exit(1)
     
-    # CRITICAL: Set GARMINTOKENS environment variable
-    # This tells garminconnect library where to find tokens
-    os.environ['GARMINTOKENS'] = TOKEN_DIR
-    log(f"✅ Set GARMINTOKENS={TOKEN_DIR}")
-    
     log("✅ Token directory setup complete")
     return TOKEN_DIR
 
 def authenticate():
-    """Authenticate using token directory - CORRECT METHOD"""
+    """Authenticate using garth.resume() - THE CORRECT METHOD"""
     log("")
     log("🔄 Authenticating with Garmin...")
     
     try:
-        # Initialize Garmin client
-        client = Garmin()
+        # THE KEY: Resume garth session BEFORE creating Garmin client
+        # This loads tokens into garth's global client state
+        garth.resume(TOKEN_DIR)
+        log("✅ Loaded tokens into garth")
         
-        # Login using token directory
-        # The library will automatically load tokens from TOKEN_DIR
-        client.login(TOKEN_DIR)
-        
-        # Get display name to verify authentication
+        # Verify garth session is valid
         try:
-            display_name = client.display_name
-            log(f"✅ Logged in as: {display_name}")
-        except:
-            log(f"✅ Authentication successful!")
+            username = garth.client.username
+            log(f"✅ Garth session valid: {username}")
+        except GarthException as e:
+            log(f"❌ ERROR: Garth session expired: {e}")
+            sys.exit(1)
+        
+        # Now create Garmin client - it will use the pre-loaded garth session
+        client = Garmin()
+        log("✅ Created Garmin client")
+        
+        # Try to verify it works with an API call
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            stats = client.get_stats(today)
+            log(f"✅ Authentication verified - API call successful!")
+        except Exception as e:
+            log(f"⚠️  Warning: API test call failed: {e}")
+            # Don't exit - tokens might still be valid
         
         return client
         
