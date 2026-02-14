@@ -1,28 +1,31 @@
 """
-Garmin Data Fetcher
-This script logs into Garmin and downloads your health data
-It runs automatically every day via Render's cron job
+Garmin Data Fetcher - TOKEN DIRECTORY VERSION
+==============================================
+This version uses a persistent token directory for authentication.
+Tokens auto-refresh, making this a truly evergreen solution!
+
+The .garminconnect folder contains:
+  - oauth1_token.json (OAuth1 credentials)
+  - oauth2_token.json (OAuth2 access + refresh tokens)
+
+These are automatically loaded and refreshed by the garminconnect library.
 """
 
 from garminconnect import Garmin
+from garth.exc import GarthHTTPError
 from datetime import datetime, timedelta
 import sqlite3
 import os
 import sys
 import time
 
-# Get Garmin credentials from environment variables (for security)
-GARMIN_EMAIL = os.environ.get('GARMIN_EMAIL')
-GARMIN_PASSWORD = os.environ.get('GARMIN_PASSWORD')
-
-# Database file
+# Configuration
+TOKEN_DIR = os.environ.get('GARMINTOKENS', '/app/.garminconnect')
 DATABASE = 'health.db'
-
-# How many days back to fetch (90 days for initial sync)
 DAYS_TO_FETCH = int(os.environ.get('DAYS_TO_FETCH', '90'))
 
 def log(message):
-    """Print with timestamp"""
+    """Print message with timestamp"""
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
 
 def get_db_connection():
@@ -30,6 +33,93 @@ def get_db_connection():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
+
+def authenticate():
+    """Authenticate using token directory"""
+    log("=" * 60)
+    log("🔐 Garmin Authentication (Token Directory Method)")
+    log("=" * 60)
+    
+    # Check if token directory exists
+    log(f"🔍 Looking for token directory: {TOKEN_DIR}")
+    
+    if not os.path.exists(TOKEN_DIR):
+        log(f"❌ ERROR: Token directory not found!")
+        log(f"   Expected location: {TOKEN_DIR}")
+        log("")
+        log("   Did you:")
+        log("   1. Run generate_tokens.py on your computer?")
+        log("   2. Copy the .garminconnect folder to your project?")
+        log("   3. Push to GitHub?")
+        log("   4. Set GARMINTOKENS environment variable in Render?")
+        sys.exit(1)
+    
+    log(f"✅ Token directory found: {TOKEN_DIR}")
+    
+    # List token files
+    try:
+        files = os.listdir(TOKEN_DIR)
+        log(f"📄 Token files present: {', '.join(files)}")
+        
+        # Check for required files
+        required_files = ['oauth1_token.json', 'oauth2_token.json']
+        for required_file in required_files:
+            if required_file not in files:
+                log(f"⚠️  Warning: Missing {required_file}")
+    except Exception as e:
+        log(f"⚠️  Could not list token directory: {e}")
+    
+    # Initialize Garmin client
+    try:
+        log("🔄 Initializing Garmin client...")
+        client = Garmin()
+        
+        # Load tokens from directory
+        log(f"🔄 Loading tokens from: {TOKEN_DIR}")
+        client.login(TOKEN_DIR)
+        
+        # Get user info to confirm authentication
+        try:
+            display_name = client.display_name
+            log(f"✅ Authentication successful!")
+            log(f"👤 Logged in as: {display_name}")
+        except:
+            log(f"✅ Authentication successful!")
+        
+        return client
+        
+    except FileNotFoundError as e:
+        log(f"❌ ERROR: Token files not found")
+        log(f"   {e}")
+        log("")
+        log("   Make sure these files exist in the token directory:")
+        log("   - oauth1_token.json")
+        log("   - oauth2_token.json")
+        sys.exit(1)
+        
+    except GarthHTTPError as e:
+        log(f"❌ ERROR: HTTP error during authentication")
+        log(f"   Status: {e.status if hasattr(e, 'status') else 'unknown'}")
+        log(f"   Message: {e}")
+        log("")
+        log("   This might mean:")
+        log("   - Tokens have been revoked")
+        log("   - Garmin account password was changed")
+        log("   - Network issue")
+        log("")
+        log("   Try regenerating tokens with generate_tokens.py")
+        sys.exit(1)
+        
+    except Exception as e:
+        log(f"❌ ERROR: Authentication failed")
+        log(f"   Type: {type(e).__name__}")
+        log(f"   Message: {e}")
+        log("")
+        log("   If this persists, try:")
+        log("   1. Regenerate tokens on your computer")
+        log("   2. Re-copy .garminconnect folder to project")
+        log("   3. Push to GitHub again")
+        sys.exit(1)
 
 def save_daily_health(conn, date_str, data):
     """Save daily health metrics to database"""
@@ -58,7 +148,7 @@ def save_daily_health(conn, date_str, data):
         conn.commit()
         return True
     except Exception as e:
-        log(f"Error saving daily health for {date_str}: {e}")
+        log(f"⚠️  Error saving daily health for {date_str}: {e}")
         return False
 
 def save_activity(conn, activity_data):
@@ -89,72 +179,23 @@ def save_activity(conn, activity_data):
         conn.commit()
         return True
     except Exception as e:
-        log(f"Error saving activity {activity_data.get('activity_id')}: {e}")
-        return False
-
-def save_activity_heart_rate(conn, activity_id, hr_data):
-    """Save detailed heart rate data for an activity"""
-    cursor = conn.cursor()
-    
-    try:
-        # Delete existing data for this activity
-        cursor.execute('DELETE FROM activity_heart_rate WHERE activity_id = ?', (activity_id,))
-        
-        # Insert new data
-        for data_point in hr_data:
-            cursor.execute('''
-                INSERT INTO activity_heart_rate (activity_id, timestamp, heart_rate)
-                VALUES (?, ?, ?)
-            ''', (activity_id, data_point['timestamp'], data_point['hr']))
-        
-        conn.commit()
-        return True
-    except Exception as e:
-        log(f"Error saving heart rate data for activity {activity_id}: {e}")
-        return False
-
-def save_sport_metrics(conn, activity_id, metrics):
-    """Save sport-specific metrics"""
-    cursor = conn.cursor()
-    
-    try:
-        # Delete existing metrics for this activity
-        cursor.execute('DELETE FROM sport_metrics WHERE activity_id = ?', (activity_id,))
-        
-        # Insert new metrics
-        for metric_name, metric_value in metrics.items():
-            cursor.execute('''
-                INSERT INTO sport_metrics (activity_id, metric_name, metric_value)
-                VALUES (?, ?, ?)
-            ''', (activity_id, metric_name, metric_value))
-        
-        conn.commit()
-        return True
-    except Exception as e:
-        log(f"Error saving sport metrics for activity {activity_id}: {e}")
+        log(f"⚠️  Error saving activity {activity_data.get('activity_id')}: {e}")
         return False
 
 def fetch_garmin_data():
     """Main function to fetch data from Garmin"""
     
-    # Check credentials
-    if not GARMIN_EMAIL or not GARMIN_PASSWORD:
-        log("❌ ERROR: GARMIN_EMAIL and GARMIN_PASSWORD environment variables must be set!")
-        sys.exit(1)
-    
+    log("")
     log("=" * 60)
-    log("Starting Garmin Data Sync")
+    log("🏃 Starting Garmin Data Sync")
     log("=" * 60)
+    log("")
     
-    # Login to Garmin
-    log("🔄 Connecting to Garmin Connect...")
-    try:
-        client = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
-        client.login()
-        log("✅ Logged in successfully!")
-    except Exception as e:
-        log(f"❌ Login failed: {e}")
-        sys.exit(1)
+    # Authenticate
+    client = authenticate()
+    
+    log("")
+    log("-" * 60)
     
     # Connect to database
     conn = get_db_connection()
@@ -164,9 +205,11 @@ def fetch_garmin_data():
     start_date = end_date - timedelta(days=DAYS_TO_FETCH)
     
     log(f"📅 Fetching data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+    log(f"📊 Time period: {DAYS_TO_FETCH} days")
+    log("")
     
     # Fetch daily health data
-    log("\n📊 Fetching daily health metrics...")
+    log("📊 Fetching daily health metrics...")
     current_date = start_date
     daily_count = 0
     
@@ -227,7 +270,9 @@ def fetch_garmin_data():
             # Save to database
             if save_daily_health(conn, date_str, daily_data):
                 daily_count += 1
-                log(f"  ✓ {date_str}: {daily_data.get('steps', 0)} steps, HR {daily_data.get('resting_hr', 'N/A')}")
+                steps = daily_data.get('steps', 0)
+                hr = daily_data.get('resting_hr', 'N/A')
+                log(f"  ✓ {date_str}: {steps:,} steps, HR {hr}")
             
             # Small delay to avoid rate limiting
             time.sleep(0.5)
@@ -237,114 +282,70 @@ def fetch_garmin_data():
         
         current_date += timedelta(days=1)
     
+    log("")
     log(f"✅ Saved {daily_count} days of health data")
     
     # Fetch activities
-    log("\n🏃 Fetching activities...")
+    log("")
+    log("🏃 Fetching activities...")
     activity_count = 0
-    hr_detail_count = 0
     
     try:
-        # Get activities for the date range
-        activities = client.get_activities(0, 100)  # Get last 100 activities
+        activities = client.get_activities(0, 50)  # Get last 50 activities
         
         for activity in activities:
             activity_id = str(activity.get('activityId'))
             activity_type = activity.get('activityType', {}).get('typeKey', 'unknown')
             
-            # Get activity details
-            try:
-                details = client.get_activity(activity_id)
-                
-                # Prepare activity data
-                activity_data = {
-                    'activity_id': activity_id,
-                    'activity_type': activity_type,
-                    'start_time': activity.get('startTimeLocal'),
-                    'duration': activity.get('duration'),
-                    'distance': activity.get('distance'),
-                    'avg_hr': activity.get('averageHR'),
-                    'max_hr': activity.get('maxHR'),
-                    'calories': activity.get('calories'),
-                    'avg_speed': activity.get('averageSpeed'),
-                    'max_speed': activity.get('maxSpeed'),
-                    'elevation_gain': activity.get('elevationGain'),
-                    'elevation_loss': activity.get('elevationLoss')
-                }
-                
-                # Save activity
-                if save_activity(conn, activity_data):
-                    activity_count += 1
-                    log(f"  ✓ {activity_type} - {activity.get('startTimeLocal', '')} - {round(activity.get('distance', 0)/1000, 2)}km")
-                
-                # Get detailed heart rate data (second-by-second if available)
-                try:
-                    hr_detail = client.get_activity_hr_in_timezones(activity_id)
-                    
-                    # Parse heart rate data
-                    hr_data_points = []
-                    if hr_detail and 'heartRateValues' in hr_detail:
-                        for hr_entry in hr_detail['heartRateValues']:
-                            if hr_entry:
-                                for timestamp, hr_value in hr_entry:
-                                    if hr_value:
-                                        hr_data_points.append({
-                                            'timestamp': timestamp,
-                                            'hr': hr_value
-                                        })
-                    
-                    if hr_data_points:
-                        save_activity_heart_rate(conn, activity_id, hr_data_points)
-                        hr_detail_count += 1
-                        log(f"    → Saved {len(hr_data_points)} heart rate data points")
-                
-                except Exception as e:
-                    log(f"    ⚠️  Could not fetch HR detail: {e}")
-                
-                # Extract sport-specific metrics
-                sport_metrics = {}
-                
-                # Swimming metrics
-                if 'lap_swimming' in activity_type.lower() or 'open_water' in activity_type.lower():
-                    sport_metrics['strokes'] = details.get('strokes')
-                    sport_metrics['avg_stroke_distance'] = details.get('avgStrokeDistance')
-                    sport_metrics['swolf'] = details.get('swolfAverage')
-                
-                # Cycling metrics
-                if 'cycling' in activity_type.lower():
-                    sport_metrics['avg_cadence'] = details.get('averageBikingCadenceInRevPerMinute')
-                    sport_metrics['max_cadence'] = details.get('maxBikingCadenceInRevPerMinute')
-                    sport_metrics['avg_power'] = details.get('avgPower')
-                
-                # Rowing metrics
-                if 'rowing' in activity_type.lower():
-                    sport_metrics['avg_stroke_rate'] = details.get('averageStrokeRate')
-                    sport_metrics['max_stroke_rate'] = details.get('maxStrokeRate')
-                
-                if sport_metrics:
-                    save_sport_metrics(conn, activity_id, sport_metrics)
-                    log(f"    → Saved {len(sport_metrics)} sport-specific metrics")
-                
-                # Small delay to avoid rate limiting
-                time.sleep(1)
-                
-            except Exception as e:
-                log(f"  ⚠️  Could not fetch details for activity {activity_id}: {e}")
+            activity_data = {
+                'activity_id': activity_id,
+                'activity_type': activity_type,
+                'start_time': activity.get('startTimeLocal'),
+                'duration': activity.get('duration'),
+                'distance': activity.get('distance'),
+                'avg_hr': activity.get('averageHR'),
+                'max_hr': activity.get('maxHR'),
+                'calories': activity.get('calories'),
+                'avg_speed': activity.get('averageSpeed'),
+                'max_speed': activity.get('maxSpeed'),
+                'elevation_gain': activity.get('elevationGain'),
+                'elevation_loss': activity.get('elevationLoss')
+            }
+            
+            if save_activity(conn, activity_data):
+                activity_count += 1
+                distance_km = round(activity.get('distance', 0) / 1000, 2) if activity.get('distance') else 0
+                log(f"  ✓ {activity_type} - {activity.get('startTimeLocal', '')} - {distance_km}km")
+            
+            time.sleep(0.5)
     
     except Exception as e:
-        log(f"❌ Error fetching activities: {e}")
+        log(f"⚠️  Error fetching activities: {e}")
     
-    log(f"✅ Saved {activity_count} activities with {hr_detail_count} detailed HR datasets")
+    log("")
+    log(f"✅ Saved {activity_count} activities")
     
-    # Close database connection
+    # Close database
     conn.close()
     
-    log("\n" + "=" * 60)
-    log("✨ Sync Complete!")
-    log(f"   • {daily_count} days of health data")
-    log(f"   • {activity_count} activities")
-    log(f"   • {hr_detail_count} detailed heart rate datasets")
+    log("")
     log("=" * 60)
+    log("✨ Sync Complete!")
+    log(f"   📊 {daily_count} days of health data")
+    log(f"   🏃 {activity_count} activities")
+    log("=" * 60)
+    log("")
 
 if __name__ == '__main__':
-    fetch_garmin_data()
+    try:
+        fetch_garmin_data()
+    except KeyboardInterrupt:
+        log("")
+        log("⚠️  Sync interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        log("")
+        log("=" * 60)
+        log(f"❌ FATAL ERROR: {e}")
+        log("=" * 60)
+        sys.exit(1)
