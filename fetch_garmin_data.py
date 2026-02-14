@@ -1,330 +1,238 @@
 """
-Garmin Data Fetcher - Environment Variable Token Method
-Reads tokens from GARMIN_TOKENS_BASE64 environment variable
-and reconstructs the token directory at runtime
+Garmin Data Fetcher - DEEP DEBUG VERSION
+Shows exactly what's happening at each step
 """
 
 from garminconnect import Garmin
-from datetime import datetime, timedelta
-import sqlite3
+from datetime import datetime
 import os
 import sys
 import json
 import base64
-import time
 
-# Configuration
 TOKEN_ENV_VAR = 'GARMIN_TOKENS_BASE64'
-TOKEN_DIR = '/tmp/.garminconnect'  # Use /tmp on Render (writable)
-DATABASE = 'health.db'
-DAYS_TO_FETCH = int(os.environ.get('DAYS_TO_FETCH', '90'))
+TOKEN_DIR = '/tmp/.garminconnect'
 
 def log(message):
     """Print with timestamp"""
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
 
-def setup_token_directory():
-    """Create token directory from environment variable"""
+def debug_log(message):
+    """Print debug message"""
+    print(f"[DEBUG] {message}")
+
+def setup_and_test_tokens():
+    """Setup tokens and test every step"""
     log("=" * 60)
-    log("🔐 Setting up Garmin authentication")
+    log("🔍 DEEP DEBUG MODE - Token Authentication")
     log("=" * 60)
     
-    # Get encoded tokens from environment
+    # Step 1: Check environment variable
+    debug_log("Step 1: Checking for GARMIN_TOKENS_BASE64 environment variable")
     encoded_tokens = os.environ.get(TOKEN_ENV_VAR)
     
     if not encoded_tokens:
-        log(f"❌ ERROR: {TOKEN_ENV_VAR} environment variable not set!")
-        log("Please set this variable in Render with the output from convert_tokens_to_env_SIMPLE.py")
+        log(f"❌ ERROR: {TOKEN_ENV_VAR} not found in environment")
         sys.exit(1)
     
-    log(f"✅ Found {TOKEN_ENV_VAR} ({len(encoded_tokens)} characters)")
+    debug_log(f"✓ Found environment variable")
+    debug_log(f"  Length: {len(encoded_tokens)} characters")
+    debug_log(f"  First 50 chars: {encoded_tokens[:50]}...")
+    debug_log(f"  Last 10 chars: ...{encoded_tokens[-10:]}")
     
-    # Decode from base64
+    # Step 2: Decode base64
+    debug_log("Step 2: Decoding from base64")
     try:
         json_str = base64.b64decode(encoded_tokens).decode()
-        tokens = json.loads(json_str)
-        log("✅ Decoded tokens successfully")
+        debug_log(f"✓ Decoded successfully")
+        debug_log(f"  Decoded length: {len(json_str)} characters")
     except Exception as e:
-        log(f"❌ ERROR: Failed to decode tokens: {e}")
+        log(f"❌ ERROR: Failed to decode: {e}")
         sys.exit(1)
     
-    # Create token directory
-    os.makedirs(TOKEN_DIR, exist_ok=True)
-    log(f"✅ Created token directory: {TOKEN_DIR}")
-    
-    # Write token files
+    # Step 3: Parse JSON
+    debug_log("Step 3: Parsing JSON")
     try:
-        oauth1_path = os.path.join(TOKEN_DIR, 'oauth1_token.json')
-        with open(oauth1_path, 'w') as f:
-            json.dump(tokens['oauth1_token'], f)
-        log(f"✅ Wrote oauth1_token.json")
-        
-        oauth2_path = os.path.join(TOKEN_DIR, 'oauth2_token.json')
-        with open(oauth2_path, 'w') as f:
-            json.dump(tokens['oauth2_token'], f)
-        log(f"✅ Wrote oauth2_token.json")
-        
+        tokens = json.loads(json_str)
+        debug_log(f"✓ JSON parsed successfully")
+        debug_log(f"  Top-level keys: {list(tokens.keys())}")
     except Exception as e:
-        log(f"❌ ERROR: Failed to write token files: {e}")
+        log(f"❌ ERROR: Failed to parse JSON: {e}")
         sys.exit(1)
     
-    log("✅ Token directory setup complete")
-    return TOKEN_DIR
-
-def authenticate():
-    """Authenticate using token directory"""
+    # Step 4: Inspect token structure
+    debug_log("Step 4: Inspecting token structure")
+    
+    if 'oauth1_token' in tokens:
+        oauth1 = tokens['oauth1_token']
+        debug_log(f"✓ oauth1_token present")
+        debug_log(f"  Type: {type(oauth1)}")
+        debug_log(f"  Keys: {list(oauth1.keys()) if isinstance(oauth1, dict) else 'Not a dict'}")
+        if isinstance(oauth1, dict):
+            for key in oauth1.keys():
+                value = oauth1[key]
+                if isinstance(value, str):
+                    debug_log(f"    {key}: {value[:50]}... (length: {len(value)})")
+                else:
+                    debug_log(f"    {key}: {value}")
+    else:
+        log(f"❌ ERROR: oauth1_token not found in tokens")
+        sys.exit(1)
+    
+    if 'oauth2_token' in tokens:
+        oauth2 = tokens['oauth2_token']
+        debug_log(f"✓ oauth2_token present")
+        debug_log(f"  Type: {type(oauth2)}")
+        debug_log(f"  Keys: {list(oauth2.keys()) if isinstance(oauth2, dict) else 'Not a dict'}")
+        if isinstance(oauth2, dict):
+            for key in oauth2.keys():
+                value = oauth2[key]
+                if isinstance(value, str) and len(value) > 50:
+                    debug_log(f"    {key}: {value[:50]}... (length: {len(value)})")
+                else:
+                    debug_log(f"    {key}: {value}")
+    else:
+        log(f"❌ ERROR: oauth2_token not found in tokens")
+        sys.exit(1)
+    
+    # Step 5: Create token directory
+    debug_log("Step 5: Creating token directory")
+    try:
+        os.makedirs(TOKEN_DIR, exist_ok=True)
+        debug_log(f"✓ Directory created: {TOKEN_DIR}")
+        debug_log(f"  Directory exists: {os.path.exists(TOKEN_DIR)}")
+        debug_log(f"  Directory writable: {os.access(TOKEN_DIR, os.W_OK)}")
+    except Exception as e:
+        log(f"❌ ERROR: Failed to create directory: {e}")
+        sys.exit(1)
+    
+    # Step 6: Write token files
+    debug_log("Step 6: Writing token files")
+    
+    oauth1_path = os.path.join(TOKEN_DIR, 'oauth1_token.json')
+    try:
+        with open(oauth1_path, 'w') as f:
+            json.dump(tokens['oauth1_token'], f, indent=2)
+        debug_log(f"✓ Wrote oauth1_token.json")
+        debug_log(f"  File exists: {os.path.exists(oauth1_path)}")
+        debug_log(f"  File size: {os.path.getsize(oauth1_path)} bytes")
+        
+        # Read back and verify
+        with open(oauth1_path, 'r') as f:
+            verify_oauth1 = json.load(f)
+        debug_log(f"  Verified readable: {list(verify_oauth1.keys())}")
+    except Exception as e:
+        log(f"❌ ERROR: Failed to write oauth1_token.json: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+    
+    oauth2_path = os.path.join(TOKEN_DIR, 'oauth2_token.json')
+    try:
+        with open(oauth2_path, 'w') as f:
+            json.dump(tokens['oauth2_token'], f, indent=2)
+        debug_log(f"✓ Wrote oauth2_token.json")
+        debug_log(f"  File exists: {os.path.exists(oauth2_path)}")
+        debug_log(f"  File size: {os.path.getsize(oauth2_path)} bytes")
+        
+        # Read back and verify
+        with open(oauth2_path, 'r') as f:
+            verify_oauth2 = json.load(f)
+        debug_log(f"  Verified readable: {list(verify_oauth2.keys())}")
+    except Exception as e:
+        log(f"❌ ERROR: Failed to write oauth2_token.json: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+    
     log("")
-    log("🔄 Initializing Garmin client...")
+    log("✅ Token files created successfully")
+    log("")
+    
+    # Step 7: Test authentication
+    debug_log("Step 7: Testing authentication")
+    debug_log("  Initializing Garmin client...")
     
     try:
         client = Garmin()
-        client.login(TOKEN_DIR)
+        debug_log(f"✓ Garmin client initialized")
+        debug_log(f"  Client type: {type(client)}")
+        debug_log(f"  Has garth attribute: {hasattr(client, 'garth')}")
         
-        try:
-            display_name = client.display_name
-            log(f"✅ Logged in as: {display_name}")
-        except:
-            log(f"✅ Authentication successful!")
-        
-        return client
-        
+        if hasattr(client, 'garth'):
+            debug_log(f"  Garth type: {type(client.garth)}")
+            debug_log(f"  Garth has oauth1_token: {hasattr(client.garth, 'oauth1_token')}")
+            debug_log(f"  Garth has oauth2_token: {hasattr(client.garth, 'oauth2_token')}")
     except Exception as e:
-        log(f"❌ Authentication failed: {e}")
+        log(f"❌ ERROR: Failed to initialize client: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
-
-def get_db_connection():
-    """Connect to SQLite database"""
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def save_daily_health(conn, date_str, data):
-    """Save daily health metrics to database"""
-    cursor = conn.cursor()
+    
+    # Step 8: Attempt login with token directory
+    debug_log("Step 8: Attempting login with token directory")
+    debug_log(f"  Token directory path: {TOKEN_DIR}")
+    debug_log(f"  Calling client.login('{TOKEN_DIR}')")
     
     try:
-        cursor.execute('''
-            INSERT OR REPLACE INTO daily_health (
-                date, steps, distance_meters, resting_heart_rate, max_heart_rate,
-                sleep_duration_seconds, sleep_score, body_battery, respiration_rate,
-                spo2_avg, vo2_max
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            date_str,
-            data.get('steps'),
-            data.get('distance_meters'),
-            data.get('resting_hr'),
-            data.get('max_hr'),
-            data.get('sleep_duration'),
-            data.get('sleep_score'),
-            data.get('body_battery'),
-            data.get('respiration'),
-            data.get('spo2'),
-            data.get('vo2_max')
-        ))
-        conn.commit()
-        return True
-    except Exception as e:
-        log(f"⚠️  Error saving daily health for {date_str}: {e}")
-        return False
-
-def save_activity(conn, activity_data):
-    """Save activity summary to database"""
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-            INSERT OR REPLACE INTO activities (
-                activity_id, activity_type, start_time, duration_seconds,
-                distance_meters, average_hr, max_hr, calories,
-                average_speed, max_speed, elevation_gain, elevation_loss
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            activity_data.get('activity_id'),
-            activity_data.get('activity_type'),
-            activity_data.get('start_time'),
-            activity_data.get('duration'),
-            activity_data.get('distance'),
-            activity_data.get('avg_hr'),
-            activity_data.get('max_hr'),
-            activity_data.get('calories'),
-            activity_data.get('avg_speed'),
-            activity_data.get('max_speed'),
-            activity_data.get('elevation_gain'),
-            activity_data.get('elevation_loss')
-        ))
-        conn.commit()
-        return True
-    except Exception as e:
-        log(f"⚠️  Error saving activity {activity_data.get('activity_id')}: {e}")
-        return False
-
-def fetch_garmin_data():
-    """Main function"""
-    log("")
-    log("=" * 60)
-    log("🏃 Starting Garmin Data Sync")
-    log("=" * 60)
-    log("")
-    
-    # Setup token directory from environment variable
-    token_dir = setup_token_directory()
-    
-    # Authenticate
-    client = authenticate()
-    
-    log("")
-    log("-" * 60)
-    
-    # Connect to database
-    conn = get_db_connection()
-    
-    # Calculate date range
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=DAYS_TO_FETCH)
-    
-    log(f"📅 Fetching data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-    log(f"📊 Time period: {DAYS_TO_FETCH} days")
-    log("")
-    
-    # Fetch daily health data
-    log("📊 Fetching daily health metrics...")
-    current_date = start_date
-    daily_count = 0
-    
-    while current_date <= end_date:
-        date_str = current_date.strftime('%Y-%m-%d')
+        result = client.login(TOKEN_DIR)
+        debug_log(f"✓ login() call completed")
+        debug_log(f"  Result type: {type(result)}")
+        debug_log(f"  Result value: {result}")
         
+        # Check client state after login
+        if hasattr(client, 'garth'):
+            debug_log(f"  After login - oauth1_token: {client.garth.oauth1_token is not None}")
+            debug_log(f"  After login - oauth2_token: {client.garth.oauth2_token is not None}")
+        
+        if hasattr(client, 'display_name'):
+            debug_log(f"  Display name: {client.display_name}")
+        
+        log("")
+        log("✅ AUTHENTICATION SUCCESSFUL!")
+        log("")
+        
+        # Try to make an API call to verify it really works
+        debug_log("Step 9: Testing API call")
         try:
-            # Get daily stats
-            stats = client.get_stats(date_str)
-            
-            # Get heart rate data
-            hr_data = client.get_heart_rates(date_str)
-            
-            # Get sleep data
-            try:
-                sleep_data = client.get_sleep_data(date_str)
-                sleep_score = sleep_data.get('dailySleepDTO', {}).get('sleepScores', {}).get('overall', {}).get('value')
-                sleep_duration = sleep_data.get('dailySleepDTO', {}).get('sleepTimeSeconds')
-            except:
-                sleep_score = None
-                sleep_duration = None
-            
-            # Get body battery
-            try:
-                body_battery_data = client.get_body_battery(date_str)
-                body_battery = body_battery_data[0].get('charged') if body_battery_data else None
-            except:
-                body_battery = None
-            
-            # Get respiration
-            try:
-                respiration_data = client.get_respiration_data(date_str)
-                respiration = respiration_data.get('avgWakingRespirationValue')
-            except:
-                respiration = None
-            
-            # Get SpO2
-            try:
-                spo2_data = client.get_pulse_ox(date_str)
-                spo2 = spo2_data.get('averageSpo2')
-            except:
-                spo2 = None
-            
-            # Compile data
-            daily_data = {
-                'steps': stats.get('totalSteps'),
-                'distance_meters': stats.get('totalDistanceMeters'),
-                'resting_hr': hr_data.get('restingHeartRate'),
-                'max_hr': hr_data.get('maxHeartRate'),
-                'sleep_duration': sleep_duration,
-                'sleep_score': sleep_score,
-                'body_battery': body_battery,
-                'respiration': respiration,
-                'spo2': spo2,
-                'vo2_max': stats.get('vo2Max')
-            }
-            
-            # Save to database
-            if save_daily_health(conn, date_str, daily_data):
-                daily_count += 1
-                steps = daily_data.get('steps', 0)
-                hr = daily_data.get('resting_hr', 'N/A')
-                log(f"  ✓ {date_str}: {steps:,} steps, HR {hr}")
-            
-            # Small delay to avoid rate limiting
-            time.sleep(0.5)
+            today = datetime.now().strftime('%Y-%m-%d')
+            debug_log(f"  Calling get_stats('{today}')")
+            stats = client.get_stats(today)
+            debug_log(f"✓ API call successful")
+            debug_log(f"  Stats type: {type(stats)}")
+            if isinstance(stats, dict):
+                debug_log(f"  Stats keys: {list(stats.keys())[:5]}...")
+            log("")
+            log("✅ API CALL SUCCESSFUL - AUTHENTICATION VERIFIED!")
+            log("")
             
         except Exception as e:
-            log(f"  ⚠️  {date_str}: Could not fetch data - {e}")
+            log(f"⚠️  WARNING: Login succeeded but API call failed: {e}")
+            import traceback
+            traceback.print_exc()
         
-        current_date += timedelta(days=1)
-    
-    log("")
-    log(f"✅ Saved {daily_count} days of health data")
-    
-    # Fetch activities
-    log("")
-    log("🏃 Fetching activities...")
-    activity_count = 0
-    
-    try:
-        activities = client.get_activities(0, 50)
-        
-        for activity in activities:
-            activity_id = str(activity.get('activityId'))
-            activity_type = activity.get('activityType', {}).get('typeKey', 'unknown')
-            
-            activity_data = {
-                'activity_id': activity_id,
-                'activity_type': activity_type,
-                'start_time': activity.get('startTimeLocal'),
-                'duration': activity.get('duration'),
-                'distance': activity.get('distance'),
-                'avg_hr': activity.get('averageHR'),
-                'max_hr': activity.get('maxHR'),
-                'calories': activity.get('calories'),
-                'avg_speed': activity.get('averageSpeed'),
-                'max_speed': activity.get('maxSpeed'),
-                'elevation_gain': activity.get('elevationGain'),
-                'elevation_loss': activity.get('elevationLoss')
-            }
-            
-            if save_activity(conn, activity_data):
-                activity_count += 1
-                distance_km = round(activity.get('distance', 0) / 1000, 2) if activity.get('distance') else 0
-                log(f"  ✓ {activity_type} - {activity.get('startTimeLocal', '')} - {distance_km}km")
-            
-            time.sleep(0.5)
-    
     except Exception as e:
-        log(f"⚠️  Error fetching activities: {e}")
-    
-    log("")
-    log(f"✅ Saved {activity_count} activities")
-    
-    # Close database
-    conn.close()
-    
-    log("")
-    log("=" * 60)
-    log("✨ Sync Complete!")
-    log(f"   📊 {daily_count} days of health data")
-    log(f"   🏃 {activity_count} activities")
-    log("=" * 60)
-    log("")
+        log(f"❌ ERROR: Authentication failed during login()")
+        log(f"  Error type: {type(e).__name__}")
+        log(f"  Error message: {e}")
+        log("")
+        debug_log("Full traceback:")
+        import traceback
+        traceback.print_exc()
+        log("")
+        
+        # Try to get more info about the error
+        if hasattr(e, '__dict__'):
+            debug_log(f"Error attributes: {e.__dict__}")
+        
+        if hasattr(e, 'response'):
+            debug_log(f"Has response attribute")
+            if hasattr(e.response, 'status_code'):
+                debug_log(f"  Status code: {e.response.status_code}")
+            if hasattr(e.response, 'text'):
+                debug_log(f"  Response text (first 500 chars): {e.response.text[:500]}")
+        
+        sys.exit(1)
 
 if __name__ == '__main__':
-    try:
-        fetch_garmin_data()
-    except KeyboardInterrupt:
-        log("")
-        log("⚠️  Sync interrupted by user")
-        sys.exit(0)
-    except Exception as e:
-        log("")
-        log("=" * 60)
-        log(f"❌ FATAL ERROR: {e}")
-        log("=" * 60)
-        sys.exit(1)
+    setup_and_test_tokens()
