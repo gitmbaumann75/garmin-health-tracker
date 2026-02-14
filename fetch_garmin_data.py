@@ -1,6 +1,6 @@
 """
-Garmin Data Fetcher - FIXED Token Authentication
-Handles token login without requiring profile to be present
+Garmin Data Fetcher - CORRECT Token Authentication
+Uses GARMINTOKENS environment variable + client.login(tokenstore)
 """
 
 from garminconnect import Garmin
@@ -66,51 +66,33 @@ def setup_token_directory():
         log(f"❌ ERROR: Failed to write token files: {e}")
         sys.exit(1)
     
+    # CRITICAL: Set GARMINTOKENS environment variable
+    # This tells garminconnect library where to find tokens
+    os.environ['GARMINTOKENS'] = TOKEN_DIR
+    log(f"✅ Set GARMINTOKENS={TOKEN_DIR}")
+    
     log("✅ Token directory setup complete")
     return TOKEN_DIR
 
 def authenticate():
-    """Authenticate using token directory - FIXED VERSION"""
+    """Authenticate using token directory - CORRECT METHOD"""
     log("")
-    log("🔄 Initializing Garmin client...")
+    log("🔄 Authenticating with Garmin...")
     
     try:
+        # Initialize Garmin client
         client = Garmin()
         
-        # The KEY FIX: Don't use login() which tries to access profile
-        # Instead, manually load tokens into garth
-        log("🔄 Loading tokens from directory...")
+        # Login using token directory
+        # The library will automatically load tokens from TOKEN_DIR
+        client.login(TOKEN_DIR)
         
-        # Load tokens using garth's resume method
-        client.garth.resume(TOKEN_DIR)
-        
-        log("✅ Tokens loaded into client!")
-        
-        # Try to get profile if available (but don't fail if it's not)
+        # Get display name to verify authentication
         try:
-            if client.garth.profile:
-                display_name = client.garth.profile.get("displayName", "User")
-                log(f"✅ Logged in as: {display_name}")
-            else:
-                log(f"✅ Authentication successful! (profile not loaded)")
+            display_name = client.display_name
+            log(f"✅ Logged in as: {display_name}")
         except:
-            log(f"✅ Authentication successful! (profile not available)")
-        
-        # Verify authentication by making a simple API call
-        try:
-            # This will fail if tokens are invalid
-            today = datetime.now().strftime('%Y-%m-%d')
-            client.get_stats(today)
-            log("✅ Verified: API calls working!")
-        except Exception as e:
-            log(f"⚠️  Warning: Token verification failed: {e}")
-            log("   Attempting to refresh tokens...")
-            try:
-                client.garth.refresh_oauth2()
-                log("✅ Tokens refreshed successfully!")
-            except Exception as refresh_error:
-                log(f"❌ ERROR: Token refresh failed: {refresh_error}")
-                raise
+            log(f"✅ Authentication successful!")
         
         return client
         
