@@ -1,6 +1,6 @@
 """
-Garmin Data Fetcher - ACTUALLY CORRECT Token Authentication
-Uses garth.resume() BEFORE creating Garmin client
+Garmin Data Fetcher - CORRECT Authentication Method
+Uses garth.resume() to load tokens, then creates Garmin client WITHOUT calling login()
 """
 
 from garminconnect import Garmin
@@ -11,7 +11,7 @@ import sys
 import json
 import base64
 import time
-import garth  # CRITICAL: Import garth directly
+import garth  # Import garth module
 from garth.exc import GarthException
 
 # Configuration
@@ -72,36 +72,47 @@ def setup_token_directory():
     return TOKEN_DIR
 
 def authenticate():
-    """Authenticate using garth.resume() - THE CORRECT METHOD"""
+    """
+    Authenticate using garth.resume() method
+    CRITICAL: This loads tokens into garth's global state BEFORE creating Garmin client
+    We do NOT call client.login() because that method is broken for token-based auth
+    """
     log("")
     log("🔄 Authenticating with Garmin...")
     
     try:
-        # THE KEY: Resume garth session BEFORE creating Garmin client
-        # This loads tokens into garth's global client state
+        # STEP 1: Load tokens into garth's global state using resume()
+        log(f"🔄 Loading tokens from {TOKEN_DIR}...")
         garth.resume(TOKEN_DIR)
-        log("✅ Loaded tokens into garth")
+        log("✅ Tokens loaded into garth")
         
-        # Verify garth session is valid
+        # STEP 2: Verify garth session is active
         try:
             username = garth.client.username
             log(f"✅ Garth session valid: {username}")
         except GarthException as e:
-            log(f"❌ ERROR: Garth session expired: {e}")
+            log(f"❌ ERROR: Garth session invalid/expired: {e}")
             sys.exit(1)
+        except Exception as e:
+            log(f"⚠️  Could not get username: {e}")
+            # Continue anyway - tokens might still work
         
-        # Now create Garmin client - it will use the pre-loaded garth session
+        # STEP 3: Create Garmin client - it will use the pre-loaded garth session
+        # IMPORTANT: We do NOT call client.login() here
         client = Garmin()
-        log("✅ Created Garmin client")
+        log("✅ Created Garmin client (using pre-loaded session)")
         
-        # Try to verify it works with an API call
+        # STEP 4: Test with an API call to verify authentication works
+        log("🔄 Testing authentication with API call...")
         try:
             today = datetime.now().strftime('%Y-%m-%d')
             stats = client.get_stats(today)
-            log(f"✅ Authentication verified - API call successful!")
+            log(f"✅ AUTHENTICATION SUCCESSFUL! API call returned data.")
         except Exception as e:
-            log(f"⚠️  Warning: API test call failed: {e}")
-            # Don't exit - tokens might still be valid
+            log(f"❌ ERROR: API test call failed: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
         
         return client
         
