@@ -1,125 +1,102 @@
 """
-Garmin Data Fetcher - TOKEN DIRECTORY VERSION
-==============================================
-This version uses a persistent token directory for authentication.
-Tokens auto-refresh, making this a truly evergreen solution!
-
-The .garminconnect folder contains:
-  - oauth1_token.json (OAuth1 credentials)
-  - oauth2_token.json (OAuth2 access + refresh tokens)
-
-These are automatically loaded and refreshed by the garminconnect library.
+Garmin Data Fetcher - Environment Variable Token Method
+Reads tokens from GARMIN_TOKENS_BASE64 environment variable
+and reconstructs the token directory at runtime
 """
 
 from garminconnect import Garmin
-from garth.exc import GarthHTTPError
 from datetime import datetime, timedelta
 import sqlite3
 import os
 import sys
+import json
+import base64
 import time
 
 # Configuration
-TOKEN_DIR = os.environ.get('GARMINTOKENS', '/app/.garminconnect')
+TOKEN_ENV_VAR = 'GARMIN_TOKENS_BASE64'
+TOKEN_DIR = '/tmp/.garminconnect'  # Use /tmp on Render (writable)
 DATABASE = 'health.db'
 DAYS_TO_FETCH = int(os.environ.get('DAYS_TO_FETCH', '90'))
 
 def log(message):
-    """Print message with timestamp"""
+    """Print with timestamp"""
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+
+def setup_token_directory():
+    """Create token directory from environment variable"""
+    log("=" * 60)
+    log("🔐 Setting up Garmin authentication")
+    log("=" * 60)
+    
+    # Get encoded tokens from environment
+    encoded_tokens = os.environ.get(TOKEN_ENV_VAR)
+    
+    if not encoded_tokens:
+        log(f"❌ ERROR: {TOKEN_ENV_VAR} environment variable not set!")
+        log("Please set this variable in Render with the output from convert_tokens_to_env_SIMPLE.py")
+        sys.exit(1)
+    
+    log(f"✅ Found {TOKEN_ENV_VAR} ({len(encoded_tokens)} characters)")
+    
+    # Decode from base64
+    try:
+        json_str = base64.b64decode(encoded_tokens).decode()
+        tokens = json.loads(json_str)
+        log("✅ Decoded tokens successfully")
+    except Exception as e:
+        log(f"❌ ERROR: Failed to decode tokens: {e}")
+        sys.exit(1)
+    
+    # Create token directory
+    os.makedirs(TOKEN_DIR, exist_ok=True)
+    log(f"✅ Created token directory: {TOKEN_DIR}")
+    
+    # Write token files
+    try:
+        oauth1_path = os.path.join(TOKEN_DIR, 'oauth1_token.json')
+        with open(oauth1_path, 'w') as f:
+            json.dump(tokens['oauth1_token'], f)
+        log(f"✅ Wrote oauth1_token.json")
+        
+        oauth2_path = os.path.join(TOKEN_DIR, 'oauth2_token.json')
+        with open(oauth2_path, 'w') as f:
+            json.dump(tokens['oauth2_token'], f)
+        log(f"✅ Wrote oauth2_token.json")
+        
+    except Exception as e:
+        log(f"❌ ERROR: Failed to write token files: {e}")
+        sys.exit(1)
+    
+    log("✅ Token directory setup complete")
+    return TOKEN_DIR
+
+def authenticate():
+    """Authenticate using token directory"""
+    log("")
+    log("🔄 Initializing Garmin client...")
+    
+    try:
+        client = Garmin()
+        client.login(TOKEN_DIR)
+        
+        try:
+            display_name = client.display_name
+            log(f"✅ Logged in as: {display_name}")
+        except:
+            log(f"✅ Authentication successful!")
+        
+        return client
+        
+    except Exception as e:
+        log(f"❌ Authentication failed: {e}")
+        sys.exit(1)
 
 def get_db_connection():
     """Connect to SQLite database"""
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
-
-def authenticate():
-    """Authenticate using token directory"""
-    log("=" * 60)
-    log("🔐 Garmin Authentication (Token Directory Method)")
-    log("=" * 60)
-    
-    # Check if token directory exists
-    log(f"🔍 Looking for token directory: {TOKEN_DIR}")
-    
-    if not os.path.exists(TOKEN_DIR):
-        log(f"❌ ERROR: Token directory not found!")
-        log(f"   Expected location: {TOKEN_DIR}")
-        log("")
-        log("   Did you:")
-        log("   1. Run generate_tokens.py on your computer?")
-        log("   2. Copy the .garminconnect folder to your project?")
-        log("   3. Push to GitHub?")
-        log("   4. Set GARMINTOKENS environment variable in Render?")
-        sys.exit(1)
-    
-    log(f"✅ Token directory found: {TOKEN_DIR}")
-    
-    # List token files
-    try:
-        files = os.listdir(TOKEN_DIR)
-        log(f"📄 Token files present: {', '.join(files)}")
-        
-        # Check for required files
-        required_files = ['oauth1_token.json', 'oauth2_token.json']
-        for required_file in required_files:
-            if required_file not in files:
-                log(f"⚠️  Warning: Missing {required_file}")
-    except Exception as e:
-        log(f"⚠️  Could not list token directory: {e}")
-    
-    # Initialize Garmin client
-    try:
-        log("🔄 Initializing Garmin client...")
-        client = Garmin()
-        
-        # Load tokens from directory
-        log(f"🔄 Loading tokens from: {TOKEN_DIR}")
-        client.login(TOKEN_DIR)
-        
-        # Get user info to confirm authentication
-        try:
-            display_name = client.display_name
-            log(f"✅ Authentication successful!")
-            log(f"👤 Logged in as: {display_name}")
-        except:
-            log(f"✅ Authentication successful!")
-        
-        return client
-        
-    except FileNotFoundError as e:
-        log(f"❌ ERROR: Token files not found")
-        log(f"   {e}")
-        log("")
-        log("   Make sure these files exist in the token directory:")
-        log("   - oauth1_token.json")
-        log("   - oauth2_token.json")
-        sys.exit(1)
-        
-    except GarthHTTPError as e:
-        log(f"❌ ERROR: HTTP error during authentication")
-        log(f"   Status: {e.status if hasattr(e, 'status') else 'unknown'}")
-        log(f"   Message: {e}")
-        log("")
-        log("   This might mean:")
-        log("   - Tokens have been revoked")
-        log("   - Garmin account password was changed")
-        log("   - Network issue")
-        log("")
-        log("   Try regenerating tokens with generate_tokens.py")
-        sys.exit(1)
-        
-    except Exception as e:
-        log(f"❌ ERROR: Authentication failed")
-        log(f"   Type: {type(e).__name__}")
-        log(f"   Message: {e}")
-        log("")
-        log("   If this persists, try:")
-        log("   1. Regenerate tokens on your computer")
-        log("   2. Re-copy .garminconnect folder to project")
-        log("   3. Push to GitHub again")
-        sys.exit(1)
 
 def save_daily_health(conn, date_str, data):
     """Save daily health metrics to database"""
@@ -183,13 +160,15 @@ def save_activity(conn, activity_data):
         return False
 
 def fetch_garmin_data():
-    """Main function to fetch data from Garmin"""
-    
+    """Main function"""
     log("")
     log("=" * 60)
     log("🏃 Starting Garmin Data Sync")
     log("=" * 60)
     log("")
+    
+    # Setup token directory from environment variable
+    token_dir = setup_token_directory()
     
     # Authenticate
     client = authenticate()
@@ -291,7 +270,7 @@ def fetch_garmin_data():
     activity_count = 0
     
     try:
-        activities = client.get_activities(0, 50)  # Get last 50 activities
+        activities = client.get_activities(0, 50)
         
         for activity in activities:
             activity_id = str(activity.get('activityId'))
