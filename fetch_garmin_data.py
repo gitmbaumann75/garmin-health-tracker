@@ -1,6 +1,6 @@
 """
-Garmin Data Fetcher - CORRECT Authentication Method
-Uses garth.resume() to load tokens, then creates Garmin client WITHOUT calling login()
+Garmin Data Fetcher - Environment Variable Method
+Sets GARMINTOKENS env var and lets garminconnect auto-load tokens
 """
 
 from garminconnect import Garmin
@@ -11,8 +11,6 @@ import sys
 import json
 import base64
 import time
-import garth  # Import garth module
-from garth.exc import GarthException
 
 # Configuration
 TOKEN_ENV_VAR = 'GARMIN_TOKENS_BASE64'
@@ -27,89 +25,76 @@ def log(message):
 def setup_token_directory():
     """Create token directory from environment variable"""
     log("=" * 60)
-    log("🔐 Setting up Garmin authentication")
+    log("Setting up Garmin authentication")
     log("=" * 60)
     
     # Get encoded tokens from environment
     encoded_tokens = os.environ.get(TOKEN_ENV_VAR)
     
     if not encoded_tokens:
-        log(f"❌ ERROR: {TOKEN_ENV_VAR} environment variable not set!")
+        log(f"ERROR: {TOKEN_ENV_VAR} environment variable not set!")
         sys.exit(1)
     
-    log(f"✅ Found {TOKEN_ENV_VAR} ({len(encoded_tokens)} characters)")
+    log(f"Found {TOKEN_ENV_VAR} ({len(encoded_tokens)} characters)")
     
     # Decode from base64
     try:
         json_str = base64.b64decode(encoded_tokens).decode()
         tokens = json.loads(json_str)
-        log("✅ Decoded tokens successfully")
+        log("Decoded tokens successfully")
     except Exception as e:
-        log(f"❌ ERROR: Failed to decode tokens: {e}")
+        log(f"ERROR: Failed to decode tokens: {e}")
         sys.exit(1)
     
     # Create token directory
     os.makedirs(TOKEN_DIR, exist_ok=True)
-    log(f"✅ Created token directory: {TOKEN_DIR}")
+    log(f"Created token directory: {TOKEN_DIR}")
     
     # Write token files
     try:
         oauth1_path = os.path.join(TOKEN_DIR, 'oauth1_token.json')
         with open(oauth1_path, 'w') as f:
             json.dump(tokens['oauth1_token'], f)
-        log(f"✅ Wrote oauth1_token.json")
+        log(f"Wrote oauth1_token.json")
         
         oauth2_path = os.path.join(TOKEN_DIR, 'oauth2_token.json')
         with open(oauth2_path, 'w') as f:
             json.dump(tokens['oauth2_token'], f)
-        log(f"✅ Wrote oauth2_token.json")
+        log(f"Wrote oauth2_token.json")
         
     except Exception as e:
-        log(f"❌ ERROR: Failed to write token files: {e}")
+        log(f"ERROR: Failed to write token files: {e}")
         sys.exit(1)
     
-    log("✅ Token directory setup complete")
+    # CRITICAL: Set GARMINTOKENS environment variable
+    # This tells garminconnect library where to find tokens
+    os.environ['GARMINTOKENS'] = TOKEN_DIR
+    log(f"Set GARMINTOKENS={TOKEN_DIR}")
+    
+    log("Token directory setup complete")
     return TOKEN_DIR
 
 def authenticate():
     """
-    Authenticate using garth.resume() method
-    CRITICAL: This loads tokens into garth's global state BEFORE creating Garmin client
-    We do NOT call client.login() because that method is broken for token-based auth
+    Authenticate by setting GARMINTOKENS and creating Garmin client
+    The library automatically loads tokens when it sees GARMINTOKENS env var
     """
     log("")
-    log("🔄 Authenticating with Garmin...")
+    log("Authenticating with Garmin...")
     
     try:
-        # STEP 1: Load tokens into garth's global state using resume()
-        log(f"🔄 Loading tokens from {TOKEN_DIR}...")
-        garth.resume(TOKEN_DIR)
-        log("✅ Tokens loaded into garth")
-        
-        # STEP 2: Verify garth session is active
-        try:
-            username = garth.client.username
-            log(f"✅ Garth session valid: {username}")
-        except GarthException as e:
-            log(f"❌ ERROR: Garth session invalid/expired: {e}")
-            sys.exit(1)
-        except Exception as e:
-            log(f"⚠️  Could not get username: {e}")
-            # Continue anyway - tokens might still work
-        
-        # STEP 3: Create Garmin client - it will use the pre-loaded garth session
-        # IMPORTANT: We do NOT call client.login() here
+        # Just create the client - it will auto-load from GARMINTOKENS
         client = Garmin()
-        log("✅ Created Garmin client (using pre-loaded session)")
+        log("Created Garmin client")
         
-        # STEP 4: Test with an API call to verify authentication works
-        log("🔄 Testing authentication with API call...")
+        # Test with an API call to verify authentication works
+        log("Testing authentication with API call...")
         try:
             today = datetime.now().strftime('%Y-%m-%d')
             stats = client.get_stats(today)
-            log(f"✅ AUTHENTICATION SUCCESSFUL! API call returned data.")
+            log(f"AUTHENTICATION SUCCESSFUL!")
         except Exception as e:
-            log(f"❌ ERROR: API test call failed: {e}")
+            log(f"ERROR: API test call failed: {e}")
             import traceback
             traceback.print_exc()
             sys.exit(1)
@@ -117,7 +102,7 @@ def authenticate():
         return client
         
     except Exception as e:
-        log(f"❌ Authentication failed: {e}")
+        log(f"Authentication failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -155,7 +140,7 @@ def save_daily_health(conn, date_str, data):
         conn.commit()
         return True
     except Exception as e:
-        log(f"⚠️  Error saving daily health for {date_str}: {e}")
+        log(f"Error saving daily health for {date_str}: {e}")
         return False
 
 def save_activity(conn, activity_data):
@@ -186,14 +171,14 @@ def save_activity(conn, activity_data):
         conn.commit()
         return True
     except Exception as e:
-        log(f"⚠️  Error saving activity {activity_data.get('activity_id')}: {e}")
+        log(f"Error saving activity {activity_data.get('activity_id')}: {e}")
         return False
 
 def fetch_garmin_data():
     """Main function"""
     log("")
     log("=" * 60)
-    log("🏃 Starting Garmin Data Sync")
+    log("Starting Garmin Data Sync")
     log("=" * 60)
     log("")
     
@@ -213,12 +198,12 @@ def fetch_garmin_data():
     end_date = datetime.now()
     start_date = end_date - timedelta(days=DAYS_TO_FETCH)
     
-    log(f"📅 Fetching data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-    log(f"📊 Time period: {DAYS_TO_FETCH} days")
+    log(f"Fetching data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+    log(f"Time period: {DAYS_TO_FETCH} days")
     log("")
     
     # Fetch daily health data
-    log("📊 Fetching daily health metrics...")
+    log("Fetching daily health metrics...")
     current_date = start_date
     daily_count = 0
     
@@ -281,22 +266,22 @@ def fetch_garmin_data():
                 daily_count += 1
                 steps = daily_data.get('steps', 0)
                 hr = daily_data.get('resting_hr', 'N/A')
-                log(f"  ✓ {date_str}: {steps:,} steps, HR {hr}")
+                log(f"  {date_str}: {steps:,} steps, HR {hr}")
             
             # Small delay to avoid rate limiting
             time.sleep(0.5)
             
         except Exception as e:
-            log(f"  ⚠️  {date_str}: Could not fetch data - {e}")
+            log(f"  {date_str}: Could not fetch data - {e}")
         
         current_date += timedelta(days=1)
     
     log("")
-    log(f"✅ Saved {daily_count} days of health data")
+    log(f"Saved {daily_count} days of health data")
     
     # Fetch activities
     log("")
-    log("🏃 Fetching activities...")
+    log("Fetching activities...")
     activity_count = 0
     
     try:
@@ -324,24 +309,24 @@ def fetch_garmin_data():
             if save_activity(conn, activity_data):
                 activity_count += 1
                 distance_km = round(activity.get('distance', 0) / 1000, 2) if activity.get('distance') else 0
-                log(f"  ✓ {activity_type} - {activity.get('startTimeLocal', '')} - {distance_km}km")
+                log(f"  {activity_type} - {activity.get('startTimeLocal', '')} - {distance_km}km")
             
             time.sleep(0.5)
     
     except Exception as e:
-        log(f"⚠️  Error fetching activities: {e}")
+        log(f"Error fetching activities: {e}")
     
     log("")
-    log(f"✅ Saved {activity_count} activities")
+    log(f"Saved {activity_count} activities")
     
     # Close database
     conn.close()
     
     log("")
     log("=" * 60)
-    log("✨ Sync Complete!")
-    log(f"   📊 {daily_count} days of health data")
-    log(f"   🏃 {activity_count} activities")
+    log("Sync Complete!")
+    log(f"   {daily_count} days of health data")
+    log(f"   {activity_count} activities")
     log("=" * 60)
     log("")
 
@@ -350,12 +335,12 @@ if __name__ == '__main__':
         fetch_garmin_data()
     except KeyboardInterrupt:
         log("")
-        log("⚠️  Sync interrupted by user")
+        log("Sync interrupted by user")
         sys.exit(0)
     except Exception as e:
         log("")
         log("=" * 60)
-        log(f"❌ FATAL ERROR: {e}")
+        log(f"FATAL ERROR: {e}")
         log("=" * 60)
         import traceback
         traceback.print_exc()
