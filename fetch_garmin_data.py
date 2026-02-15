@@ -1,6 +1,6 @@
 """
-Garmin Data Fetcher - Using Garth's Built-in Classes
-These handle user IDs automatically
+Garmin Data Fetcher - FINAL WORKING VERSION
+Gets user profile first, then uses displayName in API calls
 """
 
 from datetime import datetime, timedelta
@@ -49,7 +49,7 @@ def init_database():
     log("Database initialized")
 
 def setup_and_authenticate():
-    """Setup tokens and authenticate"""
+    """Setup tokens, authenticate, and get user profile"""
     log("=" * 60)
     log("Setting up Garmin authentication")
     log("=" * 60)
@@ -77,8 +77,34 @@ def setup_and_authenticate():
     log("")
     log("Loading session with garth...")
     garth.resume(TOKEN_DIR)
-    log("AUTHENTICATION SUCCESSFUL!")
-    log("")
+    log("Session loaded successfully!")
+    
+    # Get user profile to find display name
+    log("Fetching user profile...")
+    try:
+        profile = garth.connectapi('/userprofile-service/userprofile')
+        display_name = profile.get('displayName')
+        user_id = profile.get('profileId')
+        
+        log(f"Display Name: {display_name}")
+        log(f"User ID: {user_id}")
+        log("AUTHENTICATION SUCCESSFUL!")
+        log("")
+        
+        return display_name
+        
+    except Exception as e:
+        log(f"ERROR getting profile: {e}")
+        log("Trying alternate method...")
+        # Fallback: try to get it from social profile
+        try:
+            social = garth.connectapi('/userprofile-service/socialProfile')
+            display_name = social.get('displayName') or social.get('profileId')
+            log(f"Got display name from social profile: {display_name}")
+            return display_name
+        except Exception as e2:
+            log(f"ERROR: Could not get display name: {e2}")
+            sys.exit(1)
 
 def get_db_connection():
     """Connect to SQLite database"""
@@ -117,7 +143,7 @@ def save_daily_health(conn, date_str, data):
         return False
 
 def fetch_garmin_data():
-    """Main function using garth's built-in classes"""
+    """Main function"""
     log("")
     log("=" * 60)
     log("Starting Garmin Data Sync")
@@ -126,7 +152,7 @@ def fetch_garmin_data():
     
     init_database()
     log("")
-    setup_and_authenticate()
+    display_name = setup_and_authenticate()
     
     log("-" * 60)
     
@@ -147,19 +173,26 @@ def fetch_garmin_data():
         date_str = current_date.strftime('%Y-%m-%d')
         
         try:
-            # Use garth's built-in DailySteps class
-            steps_data = garth.DailySteps.get(date_str)
-            steps = steps_data.steps if hasattr(steps_data, 'steps') else 0
-            distance = steps_data.distance if hasattr(steps_data, 'distance') else 0
+            # Get daily summary with displayName in URL
+            summary_url = f"/usersummary-service/usersummary/daily/{display_name}?calendarDate={date_str}"
+            summary = garth.connectapi(summary_url)
             
-            # Get heart rate
+            # Extract steps and distance
+            steps = 0
+            distance = 0
+            if summary:
+                steps = summary.get('totalSteps', 0)
+                distance = summary.get('totalDistanceMeters', 0)
+            
+            # Get heart rate data
             resting_hr = None
             max_hr = None
             try:
-                hr_data = garth.DailyHeartRate.get(date_str)
+                hr_url = f"/wellness-service/wellness/dailyHeartRate/{display_name}?date={date_str}"
+                hr_data = garth.connectapi(hr_url)
                 if hr_data:
-                    resting_hr = hr_data.resting_heart_rate if hasattr(hr_data, 'resting_heart_rate') else None
-                    max_hr = hr_data.max_heart_rate if hasattr(hr_data, 'max_heart_rate') else None
+                    resting_hr = hr_data.get('restingHeartRate')
+                    max_hr = hr_data.get('maxHeartRate')
             except:
                 pass
             
@@ -167,10 +200,13 @@ def fetch_garmin_data():
             sleep_score = None
             sleep_duration = None
             try:
-                sleep_data = garth.SleepData.get(date_str)
-                if sleep_data:
-                    sleep_score = sleep_data.sleep_scores.get('overall', {}).get('value') if hasattr(sleep_data, 'sleep_scores') else None
-                    sleep_duration = sleep_data.sleep_time_seconds if hasattr(sleep_data, 'sleep_time_seconds') else None
+                sleep_url = f"/wellness-service/wellness/dailySleepData/{display_name}?date={date_str}"
+                sleep_data = garth.connectapi(sleep_url)
+                if sleep_data and 'dailySleepDTO' in sleep_data:
+                    sleep_dto = sleep_data['dailySleepDTO']
+                    if 'sleepScores' in sleep_dto and 'overall' in sleep_dto['sleepScores']:
+                        sleep_score = sleep_dto['sleepScores']['overall'].get('value')
+                    sleep_duration = sleep_dto.get('sleepTimeSeconds')
             except:
                 pass
             
@@ -191,9 +227,10 @@ def fetch_garmin_data():
             # Save to database
             if save_daily_health(conn, date_str, daily_data):
                 daily_count += 1
-                log(f"  {date_str}: {steps:,} steps, HR {resting_hr or 'N/A'}")
+                if steps > 0 or resting_hr:
+                    log(f"  {date_str}: {steps:,} steps, HR {resting_hr or 'N/A'}")
             
-            time.sleep(0.5)
+            time.sleep(0.3)  # Rate limiting
             
         except Exception as e:
             log(f"  {date_str}: Error - {e}")
