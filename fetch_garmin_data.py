@@ -1,5 +1,5 @@
 """
-Garmin Data Fetcher - Direct garth Implementation
+Garmin Data Fetcher - Direct garth Implementation with DB Init
 Bypasses garminconnect wrapper, uses garth library directly
 """
 
@@ -21,6 +21,51 @@ DAYS_TO_FETCH = int(os.environ.get('DAYS_TO_FETCH', '90'))
 def log(message):
     """Print with timestamp"""
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+
+def init_database():
+    """Initialize database tables if they don't exist"""
+    log("Initializing database...")
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    
+    # Create daily_health table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS daily_health (
+            date TEXT PRIMARY KEY,
+            steps INTEGER,
+            distance_meters REAL,
+            resting_heart_rate INTEGER,
+            max_heart_rate INTEGER,
+            sleep_duration_seconds INTEGER,
+            sleep_score INTEGER,
+            body_battery INTEGER,
+            respiration_rate REAL,
+            spo2_avg REAL,
+            vo2_max REAL
+        )
+    ''')
+    
+    # Create activities table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS activities (
+            activity_id TEXT PRIMARY KEY,
+            activity_type TEXT,
+            start_time TEXT,
+            duration_seconds INTEGER,
+            distance_meters REAL,
+            average_hr INTEGER,
+            max_hr INTEGER,
+            calories INTEGER,
+            average_speed REAL,
+            max_speed REAL,
+            elevation_gain REAL,
+            elevation_loss REAL
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+    log("Database initialized successfully")
 
 def setup_and_authenticate():
     """Setup tokens and authenticate using garth directly"""
@@ -130,6 +175,10 @@ def fetch_garmin_data():
     log("=" * 60)
     log("Starting Garmin Data Sync")
     log("=" * 60)
+    log("")
+    
+    # Initialize database first
+    init_database()
     log("")
     
     # Setup and authenticate
