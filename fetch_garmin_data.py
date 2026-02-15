@@ -1,9 +1,8 @@
 """
-Garmin Data Fetcher - Environment Variable Method
-Sets GARMINTOKENS env var and lets garminconnect auto-load tokens
+Garmin Data Fetcher - Direct garth Implementation
+Bypasses garminconnect wrapper, uses garth library directly
 """
 
-from garminconnect import Garmin
 from datetime import datetime, timedelta
 import sqlite3
 import os
@@ -11,6 +10,7 @@ import sys
 import json
 import base64
 import time
+import garth
 
 # Configuration
 TOKEN_ENV_VAR = 'GARMIN_TOKENS_BASE64'
@@ -22,8 +22,8 @@ def log(message):
     """Print with timestamp"""
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
 
-def setup_token_directory():
-    """Create token directory from environment variable"""
+def setup_and_authenticate():
+    """Setup tokens and authenticate using garth directly"""
     log("=" * 60)
     log("Setting up Garmin authentication")
     log("=" * 60)
@@ -55,54 +55,35 @@ def setup_token_directory():
         oauth1_path = os.path.join(TOKEN_DIR, 'oauth1_token.json')
         with open(oauth1_path, 'w') as f:
             json.dump(tokens['oauth1_token'], f)
-        log(f"Wrote oauth1_token.json")
         
         oauth2_path = os.path.join(TOKEN_DIR, 'oauth2_token.json')
         with open(oauth2_path, 'w') as f:
             json.dump(tokens['oauth2_token'], f)
-        log(f"Wrote oauth2_token.json")
         
+        log("Wrote token files")
     except Exception as e:
         log(f"ERROR: Failed to write token files: {e}")
         sys.exit(1)
     
-    # CRITICAL: Set GARMINTOKENS environment variable
-    # This tells garminconnect library where to find tokens
-    os.environ['GARMINTOKENS'] = TOKEN_DIR
-    log(f"Set GARMINTOKENS={TOKEN_DIR}")
-    
-    log("Token directory setup complete")
-    return TOKEN_DIR
-
-def authenticate():
-    """
-    Authenticate by setting GARMINTOKENS and creating Garmin client
-    The library automatically loads tokens when it sees GARMINTOKENS env var
-    """
-    log("")
-    log("Authenticating with Garmin...")
-    
+    # Load tokens using garth
     try:
-        # Just create the client - it will auto-load from GARMINTOKENS
-        client = Garmin()
-        log("Created Garmin client")
+        log("")
+        log("Loading session with garth...")
+        garth.resume(TOKEN_DIR)
+        log("Tokens loaded successfully")
         
-        # Test with an API call to verify authentication works
-        log("Testing authentication with API call...")
-        try:
-            today = datetime.now().strftime('%Y-%m-%d')
-            stats = client.get_stats(today)
-            log(f"AUTHENTICATION SUCCESSFUL!")
-        except Exception as e:
-            log(f"ERROR: API test call failed: {e}")
-            import traceback
-            traceback.print_exc()
-            sys.exit(1)
+        # Test with a simple API call
+        log("Testing API connection...")
+        today = datetime.now().strftime('%Y-%m-%d')
         
-        return client
+        # Use garth's connectapi method directly
+        stats = garth.connectapi(f"/usersummary-service/usersummary/daily/{today}")
+        
+        log("AUTHENTICATION SUCCESSFUL!")
+        log("")
         
     except Exception as e:
-        log(f"Authentication failed: {e}")
+        log(f"ERROR: Authentication failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -143,52 +124,17 @@ def save_daily_health(conn, date_str, data):
         log(f"Error saving daily health for {date_str}: {e}")
         return False
 
-def save_activity(conn, activity_data):
-    """Save activity summary to database"""
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-            INSERT OR REPLACE INTO activities (
-                activity_id, activity_type, start_time, duration_seconds,
-                distance_meters, average_hr, max_hr, calories,
-                average_speed, max_speed, elevation_gain, elevation_loss
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            activity_data.get('activity_id'),
-            activity_data.get('activity_type'),
-            activity_data.get('start_time'),
-            activity_data.get('duration'),
-            activity_data.get('distance'),
-            activity_data.get('avg_hr'),
-            activity_data.get('max_hr'),
-            activity_data.get('calories'),
-            activity_data.get('avg_speed'),
-            activity_data.get('max_speed'),
-            activity_data.get('elevation_gain'),
-            activity_data.get('elevation_loss')
-        ))
-        conn.commit()
-        return True
-    except Exception as e:
-        log(f"Error saving activity {activity_data.get('activity_id')}: {e}")
-        return False
-
 def fetch_garmin_data():
-    """Main function"""
+    """Main function using garth API directly"""
     log("")
     log("=" * 60)
     log("Starting Garmin Data Sync")
     log("=" * 60)
     log("")
     
-    # Setup token directory from environment variable
-    token_dir = setup_token_directory()
+    # Setup and authenticate
+    setup_and_authenticate()
     
-    # Authenticate
-    client = authenticate()
-    
-    log("")
     log("-" * 60)
     
     # Connect to database
@@ -211,62 +157,74 @@ def fetch_garmin_data():
         date_str = current_date.strftime('%Y-%m-%d')
         
         try:
-            # Get daily stats
-            stats = client.get_stats(date_str)
+            # Get daily stats using garth directly
+            stats = garth.connectapi(f"/usersummary-service/usersummary/daily/{date_str}")
             
             # Get heart rate data
-            hr_data = client.get_heart_rates(date_str)
+            hr_data = garth.connectapi(f"/wellness-service/wellness/dailyHeartRate/{date_str}")
+            
+            # Extract data from responses
+            steps = stats.get('totalSteps', 0) if stats else 0
+            distance = stats.get('totalDistanceMeters', 0) if stats else 0
+            resting_hr = hr_data.get('restingHeartRate') if hr_data else None
+            max_hr = hr_data.get('maxHeartRate') if hr_data else None
             
             # Get sleep data
+            sleep_score = None
+            sleep_duration = None
             try:
-                sleep_data = client.get_sleep_data(date_str)
-                sleep_score = sleep_data.get('dailySleepDTO', {}).get('sleepScores', {}).get('overall', {}).get('value')
-                sleep_duration = sleep_data.get('dailySleepDTO', {}).get('sleepTimeSeconds')
+                sleep_data = garth.connectapi(f"/wellness-service/wellness/dailySleepData/{date_str}")
+                if sleep_data and 'dailySleepDTO' in sleep_data:
+                    sleep_score = sleep_data['dailySleepDTO'].get('sleepScores', {}).get('overall', {}).get('value')
+                    sleep_duration = sleep_data['dailySleepDTO'].get('sleepTimeSeconds')
             except:
-                sleep_score = None
-                sleep_duration = None
+                pass
             
             # Get body battery
+            body_battery = None
             try:
-                body_battery_data = client.get_body_battery(date_str)
-                body_battery = body_battery_data[0].get('charged') if body_battery_data else None
+                bb_data = garth.connectapi(f"/wellness-service/wellness/bodyBattery/reports/daily/{date_str}")
+                if bb_data and isinstance(bb_data, list) and len(bb_data) > 0:
+                    body_battery = bb_data[0].get('charged')
             except:
-                body_battery = None
+                pass
             
             # Get respiration
+            respiration = None
             try:
-                respiration_data = client.get_respiration_data(date_str)
-                respiration = respiration_data.get('avgWakingRespirationValue')
+                resp_data = garth.connectapi(f"/wellness-service/wellness/daily/respiration/{date_str}")
+                if resp_data:
+                    respiration = resp_data.get('avgWakingRespirationValue')
             except:
-                respiration = None
+                pass
             
             # Get SpO2
+            spo2 = None
             try:
-                spo2_data = client.get_pulse_ox(date_str)
-                spo2 = spo2_data.get('averageSpo2')
+                spo2_data = garth.connectapi(f"/wellness-service/wellness/daily/spo2/{date_str}")
+                if spo2_data:
+                    spo2 = spo2_data.get('averageSpo2')
             except:
-                spo2 = None
+                pass
             
             # Compile data
             daily_data = {
-                'steps': stats.get('totalSteps'),
-                'distance_meters': stats.get('totalDistanceMeters'),
-                'resting_hr': hr_data.get('restingHeartRate'),
-                'max_hr': hr_data.get('maxHeartRate'),
+                'steps': steps,
+                'distance_meters': distance,
+                'resting_hr': resting_hr,
+                'max_hr': max_hr,
                 'sleep_duration': sleep_duration,
                 'sleep_score': sleep_score,
                 'body_battery': body_battery,
                 'respiration': respiration,
                 'spo2': spo2,
-                'vo2_max': stats.get('vo2Max')
+                'vo2_max': None  # Would need different endpoint
             }
             
             # Save to database
             if save_daily_health(conn, date_str, daily_data):
                 daily_count += 1
-                steps = daily_data.get('steps', 0)
-                hr = daily_data.get('resting_hr', 'N/A')
-                log(f"  {date_str}: {steps:,} steps, HR {hr}")
+                log(f"  {date_str}: {steps:,} steps, HR {resting_hr or 'N/A'}")
             
             # Small delay to avoid rate limiting
             time.sleep(0.5)
@@ -279,46 +237,6 @@ def fetch_garmin_data():
     log("")
     log(f"Saved {daily_count} days of health data")
     
-    # Fetch activities
-    log("")
-    log("Fetching activities...")
-    activity_count = 0
-    
-    try:
-        activities = client.get_activities(0, 50)
-        
-        for activity in activities:
-            activity_id = str(activity.get('activityId'))
-            activity_type = activity.get('activityType', {}).get('typeKey', 'unknown')
-            
-            activity_data = {
-                'activity_id': activity_id,
-                'activity_type': activity_type,
-                'start_time': activity.get('startTimeLocal'),
-                'duration': activity.get('duration'),
-                'distance': activity.get('distance'),
-                'avg_hr': activity.get('averageHR'),
-                'max_hr': activity.get('maxHR'),
-                'calories': activity.get('calories'),
-                'avg_speed': activity.get('averageSpeed'),
-                'max_speed': activity.get('maxSpeed'),
-                'elevation_gain': activity.get('elevationGain'),
-                'elevation_loss': activity.get('elevationLoss')
-            }
-            
-            if save_activity(conn, activity_data):
-                activity_count += 1
-                distance_km = round(activity.get('distance', 0) / 1000, 2) if activity.get('distance') else 0
-                log(f"  {activity_type} - {activity.get('startTimeLocal', '')} - {distance_km}km")
-            
-            time.sleep(0.5)
-    
-    except Exception as e:
-        log(f"Error fetching activities: {e}")
-    
-    log("")
-    log(f"Saved {activity_count} activities")
-    
     # Close database
     conn.close()
     
@@ -326,7 +244,6 @@ def fetch_garmin_data():
     log("=" * 60)
     log("Sync Complete!")
     log(f"   {daily_count} days of health data")
-    log(f"   {activity_count} activities")
     log("=" * 60)
     log("")
 
