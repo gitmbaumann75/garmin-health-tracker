@@ -1,6 +1,6 @@
 """
-Garmin Data Fetcher - FINAL WORKING VERSION
-Gets user profile first, then uses displayName in API calls
+Garmin Data Fetcher - FIXED VERSION
+Handles profile endpoint returning list instead of dict
 """
 
 from datetime import datetime, timedelta
@@ -82,9 +82,19 @@ def setup_and_authenticate():
     # Get user profile to find display name
     log("Fetching user profile...")
     try:
-        profile = garth.connectapi('/userprofile-service/userprofile')
+        profile_response = garth.connectapi('/userprofile-service/userprofile')
+        
+        # Handle response that could be list or dict
+        profile = profile_response
+        if isinstance(profile_response, list) and len(profile_response) > 0:
+            profile = profile_response[0]
+        
         display_name = profile.get('displayName')
         user_id = profile.get('profileId')
+        
+        if not display_name:
+            # Try to get from userName or profileId
+            display_name = profile.get('userName') or profile.get('profileId')
         
         log(f"Display Name: {display_name}")
         log(f"User ID: {user_id}")
@@ -95,16 +105,9 @@ def setup_and_authenticate():
         
     except Exception as e:
         log(f"ERROR getting profile: {e}")
-        log("Trying alternate method...")
-        # Fallback: try to get it from social profile
-        try:
-            social = garth.connectapi('/userprofile-service/socialProfile')
-            display_name = social.get('displayName') or social.get('profileId')
-            log(f"Got display name from social profile: {display_name}")
-            return display_name
-        except Exception as e2:
-            log(f"ERROR: Could not get display name: {e2}")
-            sys.exit(1)
+        import traceback
+        log(traceback.format_exc())
+        sys.exit(1)
 
 def get_db_connection():
     """Connect to SQLite database"""
