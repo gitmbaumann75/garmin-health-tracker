@@ -201,6 +201,47 @@ def get_health_data():
         print(f"Error fetching health data: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/daily-stats')
+def get_daily_stats():
+    """API endpoint for daily stats (same as health-data, for backward compatibility)"""
+    return get_health_data()
+
+@app.route('/api/recent-activities')
+def get_recent_activities():
+    """API endpoint for recent activities"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM activities 
+            ORDER BY start_time DESC
+            LIMIT 10
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Convert to list of dicts
+        activities = []
+        for row in rows:
+            activities.append({
+                'activity_id': row['activity_id'],
+                'activity_type': row['activity_type'],
+                'start_time': row['start_time'],
+                'duration_seconds': row['duration_seconds'],
+                'distance_meters': row['distance_meters'],
+                'average_hr': row['average_hr'],
+                'max_hr': row['max_hr'],
+                'calories': row['calories']
+            })
+        
+        return jsonify(activities)
+        
+    except Exception as e:
+        print(f"Error fetching activities: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/export-csv')
 def export_csv():
     """Export data as CSV"""
