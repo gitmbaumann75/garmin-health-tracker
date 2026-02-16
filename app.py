@@ -179,15 +179,16 @@ def get_health_data():
         conn.close()
         
         # Convert to list of dicts
+        # NOTE: Using abbreviated field names to match dashboard expectations
         data = []
         for row in rows:
             data.append({
                 'date': row['date'],
                 'steps': row['steps'],
                 'distance_meters': row['distance_meters'],
-                'resting_heart_rate': row['resting_heart_rate'],
-                'max_heart_rate': row['max_heart_rate'],
-                'sleep_duration_seconds': row['sleep_duration_seconds'],
+                'resting_hr': row['resting_heart_rate'],  # Dashboard expects 'resting_hr'
+                'max_hr': row['max_heart_rate'],  # Dashboard expects 'max_hr'
+                'sleep_duration': row['sleep_duration_seconds'],
                 'sleep_score': row['sleep_score'],
                 'body_battery': row['body_battery'],
                 'respiration_rate': row['respiration_rate'],
