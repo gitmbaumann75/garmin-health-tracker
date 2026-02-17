@@ -35,9 +35,9 @@
                 <p class="stat-value" id="today-resting-hr">-- bpm</p>
             </div>
             <div class="stat-card">
-                <div class="stat-icon">🔋</div>
-                <h3>BODY BATTERY</h3>
-                <p class="stat-value" id="today-battery">--</p>
+                <div class="stat-icon">📊</div>
+                <h3>HRV</h3>
+                <p class="stat-value" id="today-hrv">-- ms</p>
             </div>
             <div class="stat-card">
                 <div class="stat-icon">🫁</div>
@@ -64,12 +64,12 @@
                 <canvas id="heartRateChart"></canvas>
             </div>
 
-            <!-- Body Battery and SpO2 Row -->
+            <!-- HRV and SpO2 Row -->
             <div class="chart-row">
                 <div class="chart-card half">
-                    <h2>🔋 Body Battery</h2>
-                    <canvas id="bodyBatteryChart"></canvas>
-                    <p class="chart-note">Current: <span id="current-battery">--</span> - Higher is better (0-100)</p>
+                    <h2>📊 HRV (Heart Rate Variability)</h2>
+                    <canvas id="hrvChart"></canvas>
+                    <p class="chart-note">Current HRV: <span id="current-hrv">--</span> - Normal range reflects better recovery</p>
                 </div>
                 <div class="chart-card half">
                     <h2>🫁 Pulse Ox (SpO2)</h2>
@@ -102,38 +102,30 @@
                     <p class="chart-note">Period total: <span id="period-total">--</span> minutes</p>
                 </div>
                 <div class="chart-card half">
-                    <h3 class="subsection-title">VO2 Max Estimate</h3>
+                    <h3 class="subsection-title">VO2 Max</h3>
                     <canvas id="vo2MaxChart"></canvas>
-                    <p class="chart-note">Current: <span id="current-vo2max">--</span></p>
+                    <p class="chart-note">Current VO2 Max: <span id="current-vo2max">--</span></p>
                 </div>
-            </div>
-
-            <!-- Respiration Rate Chart -->
-            <div class="chart-card">
-                <h2>🫁 Respiration Rate</h2>
-                <canvas id="respirationChart"></canvas>
             </div>
         </div>
 
-        <!-- Footer -->
-        <footer style="text-align: center; margin-top: 40px; padding: 20px; color: #7f8c8d;">
-            Last updated: <span id="last-update">--</span>
+        <!-- Recent Activities -->
+        <div class="activities-section">
+            <h2>📅 Recent Activities</h2>
+            <div id="activities-list">
+                <p>No activities found.</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>Last updated: <span id="last-update">--</span></p>
+            <p>Data syncs from Garmin Connect</p>
         </footer>
     </div>
 
     <script>
-        let allData = [];
         let currentDays = 30;
-
-        // Timeframe buttons
-        document.querySelectorAll('.timeframe-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentDays = parseInt(this.dataset.days);
-                loadHealthData(currentDays);
-            });
-        });
+        let allData = [];
 
         // Fetch and display data
         async function loadHealthData(days = 30) {
@@ -155,7 +147,7 @@
         // Update stat cards with today's data
         function updateStatCards(today) {
             document.getElementById('today-resting-hr').textContent = today.resting_hr ? `${today.resting_hr} bpm` : '--';
-            document.getElementById('today-battery').textContent = today.body_battery || '--';
+            document.getElementById('today-hrv').textContent = '--'; // HRV not in current data
             document.getElementById('today-spo2').textContent = today.spo2_avg ? `${Math.round(today.spo2_avg)}%` : '--';
             document.getElementById('today-vo2').textContent = today.vo2_max || '--';
             document.getElementById('today-sleep-score').textContent = today.sleep_score || '--';
@@ -170,11 +162,14 @@
             const maxHR = data.map(d => d.max_hr).reverse();
             const avgHR = data.map(d => d.resting_hr && d.max_hr ? (d.resting_hr + d.max_hr) / 2 : null).reverse();
             
-            const bodyBattery = data.map(d => d.body_battery).reverse();
             const spo2Data = data.map(d => d.spo2_avg).reverse();
             const sleepHours = data.map(d => d.sleep_duration ? d.sleep_duration / 3600 : null).reverse();
             const sleepScores = data.map(d => d.sleep_score).reverse();
+            const bodyBattery = data.map(d => d.body_battery).reverse();
             const respiration = data.map(d => d.respiration_rate).reverse();
+            
+            // Calculate HRV proxy (max_hr - resting_hr)
+            const hrvProxy = data.map(d => d.max_hr && d.resting_hr ? d.max_hr - d.resting_hr : null).reverse();
             
             // Calculate intense activity minutes (from steps - rough estimate)
             const activityMinutes = data.map(d => d.steps ? Math.round(d.steps / 100) : 0).reverse();
@@ -183,9 +178,6 @@
             const vo2MaxData = data.map(d => d.vo2_max).reverse();
 
             // Update current values
-            if (bodyBattery.length > 0 && bodyBattery[bodyBattery.length - 1]) {
-                document.getElementById('current-battery').textContent = bodyBattery[bodyBattery.length - 1];
-            }
             if (spo2Data.length > 0 && spo2Data[spo2Data.length - 1]) {
                 document.getElementById('current-spo2').textContent = `${Math.round(spo2Data[spo2Data.length - 1])}%`;
             }
@@ -194,6 +186,9 @@
             }
             if (sleepScores.length > 0 && sleepScores[sleepScores.length - 1]) {
                 document.getElementById('last-sleep-score').textContent = sleepScores[sleepScores.length - 1];
+            }
+            if (hrvProxy.length > 0 && hrvProxy[hrvProxy.length - 1]) {
+                document.getElementById('current-hrv').textContent = `${hrvProxy[hrvProxy.length - 1]} ms`;
             }
             if (vo2MaxData.length > 0 && vo2MaxData[0]) {
                 document.getElementById('current-vo2max').textContent = vo2MaxData[0];
@@ -251,14 +246,14 @@
                 }
             });
 
-            // Body Battery Chart
-            new Chart(document.getElementById('bodyBatteryChart'), {
+            // HRV Chart
+            new Chart(document.getElementById('hrvChart'), {
                 type: 'line',
                 data: {
                     labels: dates,
                     datasets: [{
-                        label: 'Body Battery',
-                        data: bodyBattery,
+                        label: 'HRV Proxy',
+                        data: hrvProxy,
                         borderColor: '#4ECDC4',
                         backgroundColor: 'rgba(78, 205, 196, 0.2)',
                         tension: 0.4,
@@ -269,11 +264,7 @@
                     responsive: true,
                     maintainAspectRatio: true,
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            min: 0,
-                            max: 100
-                        }
+                        y: { beginAtZero: false }
                     }
                 }
             });
@@ -397,37 +388,166 @@
                     }
                 }
             });
-
-            // Respiration Rate Chart
-            new Chart(document.getElementById('respirationChart'), {
-                type: 'line',
-                data: {
-                    labels: dates,
-                    datasets: [{
-                        label: 'Breaths per Minute',
-                        data: respiration,
-                        borderColor: '#F39C12',
-                        backgroundColor: 'rgba(243, 156, 18, 0.2)',
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: {
-                        y: {
-                            beginAtZero: false,
-                            min: 10,
-                            max: 25
-                        }
-                    }
-                }
-            });
         }
 
-        // Load data on page load
+        // Fetch activities
+        async function loadActivities() {
+            try {
+                const response = await fetch('/api/recent-activities');
+                const activities = await response.json();
+                
+                const activitiesList = document.getElementById('activities-list');
+                if (activities.length === 0) {
+                    activitiesList.innerHTML = '<p>No activities found.</p>';
+                } else {
+                    activitiesList.innerHTML = activities.map(activity => `
+                        <div class="activity-item">
+                            <strong>${activity.name || 'Activity'}</strong> - 
+                            ${new Date(activity.date).toLocaleDateString()}
+                            ${activity.distance ? `- ${(activity.distance / 1000).toFixed(2)} km` : ''}
+                            ${activity.duration ? `- ${Math.round(activity.duration / 60)} min` : ''}
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading activities:', error);
+            }
+        }
+
+        // Timeframe buttons
+        document.querySelectorAll('.timeframe-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentDays = parseInt(this.dataset.days);
+                loadHealthData(currentDays);
+            });
+        });
+
+        // Initial load
         loadHealthData(currentDays);
+        loadActivities();
     </script>
+
+    <style>
+        .export-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            transition: transform 0.2s;
+        }
+        
+        .export-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .timeframe-btn {
+            background: #f0f0f0;
+            border: 2px solid #ddd;
+            padding: 8px 16px;
+            margin: 0 5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .timeframe-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin: 10px 0;
+        }
+
+        .charts-container {
+            margin: 30px 0;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+        }
+
+        .chart-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .chart-card.half {
+            padding: 20px;
+        }
+
+        .subsection-title {
+            font-size: 1.1em;
+            margin: 15px 0 10px 0;
+            color: #555;
+        }
+
+        .chart-note {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #666;
+            font-style: italic;
+        }
+
+        .activities-section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin: 30px 0;
+        }
+
+        .activity-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        @media (max-width: 768px) {
+            .chart-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </body>
 </html>
