@@ -305,13 +305,7 @@
                 }
             });
 
-            // Sleep Duration Chart (with conditional coloring)
-            // Create color array: red for under 7 hours, purple for 7+ hours
-            const sleepColors = sleepHours.map(hours => {
-                if (hours === null) return '#9B59B6';  // Purple if no data
-                return hours < 7 ? '#FF3333' : '#9B59B6';  // Bright red if < 7 hours, purple otherwise
-            });
-            
+            // Sleep Duration Chart
             new Chart(document.getElementById('sleepDurationChart'), {
                 type: 'bar',
                 data: {
@@ -319,7 +313,7 @@
                     datasets: [{
                         label: 'Hours',
                         data: sleepHours,
-                        backgroundColor: sleepColors  // Use conditional colors instead of single color
+                        backgroundColor: '#9B59B6'
                     }]
                 },
                 options: {
